@@ -62,7 +62,7 @@ export FI_CXI_OPTIMIZED_MRS=false
 #mpiexec -n 2 --ppn 4 --no-transfer set_gpu_rank torchrun --nnodes=2 --nproc-per-node=4 --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip test.py
 #mpiexec -n 2 --ppn 1 torchrun --nnodes=2 --nproc-per-node=4 --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip test_rank.py
 export MPICH_OFI_NIC_POLICY=GPU
-CUDA_VISIBLE_DEVICES=0,1,2,3 mpiexec -n 2 --ppn 1 --cpu-bind none torchrun --nnodes=2 --nproc-per-node=2 --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip main.py
+CUDA_VISIBLE_DEVICES=0,1,2,3 mpiexec -n 2 --ppn 1 --cpu-bind none torchrun --nnodes=2 --nproc-per-node=2 --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip main.py --use-fsdp
 #mpiexec -n 2 --ppn 4 set_gpu_rank torchrun --nnodes=2 --nproc-per-node=4 --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip test.py
 #mpiexec -n 2 --ppn 1 echo "helloworld!"
 #mpiexec -n 8 -ppn 4 get_local_rank torchrun --nnodes 2 --nproc_per_node 4 mp.py

@@ -1,2 +1,8 @@
 # distributed-pytorch-hpc
-Example workflows for executing multi-node, multi-GPU machine learning training using PyTorch on NCAR's HPC SuperComputers.
+
+This repostory contains example workflows for executing multi-node, multi-GPU machine learning training using PyTorch on NCAR's HPC Supercomputers (i.e. Derecho). 
+
+
+## Getting Started
+
+Example workflows for executing multi-node, multi-GPU machine learning training using PyTorch on NCAR's HPC Supercomputers.

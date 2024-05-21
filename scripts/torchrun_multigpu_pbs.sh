@@ -29,6 +29,25 @@ export NCCL_DEBUG=INFO
 export MPICH_GPU_MANAGED_MEMORY_SUPPORT_ENABLED=1
 export MPICH_OFI_NIC_POLICY=GPU
 
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 mpiexec -n 2 --ppn 1 --cpu-bind none torchrun --nnodes=2 --nproc-per-node=4 --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip multigpu_resnet.py 
+export LOGLEVEL=INFO
+#export NCCL_DEBUG=INFO
+
+export NCCL_SOCKET_IFNAME=hsn
+export NCCL_HOME=/glade/u/home/dhoward/work/nccl-ofi-plugin/install
+export LD_LIBRARY_PATH=$NCCL_HOME/lib:$NCCL_HOME/plugin/lib:$LD_LIBRARY_PATH
+
+export NCCL_NCHANNELS_PER_NET_PEER=4
+export MPICH_GPU_SUPPORT_ENABLED=1
+export MPICH_OFI_NIC_POLICY=GPU
+export MPICH_RDMA_ENABLED_CUDA=1
+export NCCL_DISABLE_IB=1
+export NCCL_CROSS_NIC=1
+export FI_CXI_DISABLE_HOST_REGISTER=1
+export FI_CXI_OPTIMIZED_MRS=false
+#export NCCL_NET="AWS Libfabric"
+#export NCCL_NET_GDR_LEVEL=PBH
+
+
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 mpiexec -n 2 --ppn 1 --cpu-bind none torchrun --nnodes=2 --nproc-per-node=4 --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip multigpu_resnet_FSDP.py 
 
 #mpiexec -n 2 --ppn 4 set_gpu_rank torchrun --nnodes=2 --nproc-per-node=4 --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip test.py

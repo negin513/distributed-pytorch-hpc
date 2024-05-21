@@ -53,8 +53,8 @@ Here is a summary table of the different parallelism strategies:
 | **Strategy** | **Number of Nodes** | **Number of GPUs per Node** | **Launch Method**                              |
 |--------------|---------------------|-----------------------------|------------------------------------------------|
 | **DP (Data Parallel)** | 1                   | >=1                    | Directly in script using `torch.nn.DataParallel`  |
-| **DDP (Distributed Data Parallel)** | >1            | >=1                    | `torch.distributed.launch` or `torch.multiprocessing.spawn`  |
-| **FSDP (Fully Sharded Data Parallel)** | Multiple            | Multiple                    | `torch.distributed.launch` with setup for sharding |
+| **DDP (Distributed Data Parallel)** | >1            | >=1                    | `mpirun` + `torchrun`  |
+| **FSDP (Fully Sharded Data Parallel)** | Multiple            | Multiple                    | `mpirun` + `torchrun` with setup for sharding |
 
  
 ## Getting Started

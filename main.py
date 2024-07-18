@@ -6,6 +6,8 @@ import torch.optim as optim
 
 import torchvision
 import torchvision.transforms as transforms
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+
 
 import argparse
 import os
@@ -81,6 +83,8 @@ def main():
     parser.add_argument("--arch", type=str, help="Model architecture.", default='resnet50', choices=['resnet50', 'resnet18', 'resnet101', 'resnet152'])
     parser.add_argument("--use_syn", action="store_true", help="Use synthetic data")
     parser.add_argument("--steps_syn", type=int, help="Step per epoch for training with synthetic data", default=steps_syn_default)
+    parser.add_argument("--use_fsdp", action="store_true", help="Use Fully Sharded Data Parallel instead of Distributed Data Parallel")
+
     argv = parser.parse_args()
 
     local_rank = argv.local_rank
@@ -118,7 +122,11 @@ def main():
 
     device = torch.device("cuda:{}".format(LOCAL_RANK))
     model = model.to(device)
-    ddp_model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[LOCAL_RANK], output_device=LOCAL_RANK)
+
+    if argv.use_fsdp:
+        ddp_model = FullyShardedDataParallel(model, flatten_parameters=True)
+    else: 
+        ddp_model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[LOCAL_RANK], output_device=LOCAL_RANK)
 
     # We only save the model who uses device "cuda:0"
     # To resume, the device for the saved model would also be "cuda:0"

@@ -2,7 +2,14 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+*ddp.o*
+*ddp.e*
+*comm.o*
+*comm.e*
+tests/*.o*
+tests/*.e*
+out
+*/out
 # C extensions
 *.so
 

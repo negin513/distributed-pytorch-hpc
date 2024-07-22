@@ -1,3 +1,8 @@
+"""
+This script initializes the distributed process group and runs a simple 
+distributed send/receive operation.
+"""
+
 import os
 import argparse
 
@@ -11,6 +16,14 @@ WORLD_RANK = int(os.environ["RANK"])
 
 
 def run(backend):
+    """
+    The function initializes a tensor, moves it to the appropriate device,
+    and then sends or receives the tensor based on the process's world rank.
+
+    Args:
+        backend (str): The backend to use for distributed processing ('nccl' or 'gloo').
+
+    """
     tensor = torch.zeros(1)
 
     # Need to put tensor on a GPU device for nccl backend
@@ -29,7 +42,7 @@ def run(backend):
 
 def init_processes(backend):
     """
-    Initialize the distributed environment for PyTorch
+    Initialize the distributed environment for PyTorch and call run function. 
     """
     dist.init_process_group(backend, rank=WORLD_RANK, world_size=WORLD_SIZE)
     run(backend)
@@ -42,7 +55,11 @@ if __name__ == "__main__":
         type=int,
         help="Local rank. Necessary for using the torch.distributed.launch utility.",
     )
-    parser.add_argument("--backend", type=str, default="nccl", choices=["nccl", "gloo"])
+    parser.add_argument(
+        "--backend",
+        type=str,
+        default="nccl",
+        choices=["nccl", "gloo"])
     args = parser.parse_args()
 
     init_processes(backend=args.backend)

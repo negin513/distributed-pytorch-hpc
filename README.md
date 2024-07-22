@@ -97,7 +97,6 @@ In the above line:
 With the advancement in CUDA applications and GPU clusters, libraries like NCCL (NVIDIA Collective Communication Library) provide faster inter-GPU communication primitives that are topology-aware, leveraging technologies such as RDMA via RoCE or InfiniBand. NCCL integrates easily into MPI applications, with MPI serving as the frontend for launching the parallel job and NCCL as the backend for heavy communication.
 
 
-
 ## Example Workflows
 
 Example 1) Multi-GPU ResNet Training on Derecho using DDP `/scripts/torchrun_multigpu_pbs.sh`

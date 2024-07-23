@@ -126,4 +126,4 @@ qsub scripts/torchrun_multigpu_fsdp.sh
 
 ## Resources
 
-
+- [Multi node PyTorch Distributed Training Guide For People In A Hurry](https://lambdalabs.com/blog/multi-node-pytorch-distributed-training-guide#distributed-pytorch-underthehood)

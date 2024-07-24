@@ -48,7 +48,9 @@ export NCCL_SHM_DISABLE=1
 #export NCCL_NET_GDR_LEVEL=PHB
 
 which mpiexec
-export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 
+export CUDA_VISIBLE_DEVICES=0,1,2,3
+
+python -m torch.utils.collect_env
 mpiexec -n 2 --ppn 1 --cpu-bind none torchrun --nnodes=2 --nproc-per-node=4 --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip comm_test.py
 
 #mpiexec -n 2 --ppn 4 set_gpu_rank torchrun --nnodes=2 --nproc-per-node=4 --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip test.py

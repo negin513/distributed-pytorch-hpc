@@ -107,6 +107,7 @@ mpiexec -n $nnodes --cpu-bind none echo $CMD
 ## mpiexec print host name 
 mpiexec -n $nnodes --cpu-bind none python  print_hostname.py # print IP address of all nodes
 
+mpiexec -n $nnodes --cpu-bind none python print_hostinfo.py # print IP address of all nodes
 
 #########################################
 ## mpiexec + torchrun --> print hostname + num of gpu/node
@@ -120,11 +121,11 @@ mpiexec -n 2 --cpu-bind none torchrun --nnodes=$nnodes --nproc-per-node=4 --rdzv
 
 ## solution 2: 
 echo ("after setting cuda visible devices:")
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 mpiexec -n $nnodes --cpu-bind none torchrun --nnodes=$nnodes --nproc-per-node=auto --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip print_hostinfo.py
+CUDA_VISIBLE_DEVICES=0,1,2,3 mpiexec -n $nnodes --cpu-bind none torchrun --nnodes=$nnodes --nproc-per-node=auto --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip print_hostinfo.py
 
 #########################################
 # torchrun_backend needs CUDA_VISIBLE_DEVICES to find GPUs:
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7  mpiexec -n $nnodes --cpu-bind none torchrun --nnodes=$nnodes --nproc-per-node=auto --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip test_torchrun.py
+CUDA_VISIBLE_DEVICES=0,1,2,3  mpiexec -n $nnodes --cpu-bind none torchrun --nnodes=$nnodes --nproc-per-node=auto --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip test_torchrun.py
 
 
 ### -- Things that did not work:

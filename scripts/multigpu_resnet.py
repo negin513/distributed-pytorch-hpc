@@ -1,4 +1,5 @@
 # example of multinode multi-gpu training
+# code adapted from LambdaLabsML
 
 import torch
 import torch.nn.functional as F
@@ -10,6 +11,13 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 import os
+
+
+print ('----------------------')
+print ('cuda device : ', torch.cuda.device_count())
+print ('pytorch version : ', torch.__version__)
+print ('nccl version : ', print(torch.cuda.nccl.version()))
+print ('----------------------')   
 
 
 def ddp_setup():
@@ -25,8 +33,9 @@ class Trainer:
         save_every: int,
         snapshot_path: str,
     ) -> None:
-        self.gpu_id = int(os.environ["LOCAL_RANK"])
-        self.model = model.to(self.gpu_id)
+        self.local_rank = int(os.environ["LOCAL_RANK"])
+        self.global_rank = int(os.environ["RANK"])
+        self.model = model.to(self.local_rank)
         self.train_data = train_data
         self.optimizer = optimizer
         self.save_every = save_every
@@ -36,10 +45,10 @@ class Trainer:
             print("Loading snapshot")
             self._load_snapshot(snapshot_path)
 
-        self.model = DDP(self.model, device_ids=[self.gpu_id])
+        self.model = DDP(self.model, device_ids=[self.local_rank])
 
     def _load_snapshot(self, snapshot_path):
-        loc = f"cuda:{self.gpu_id}"
+        loc = f"cuda:{self.local_rank}"
         snapshot = torch.load(snapshot_path, map_location=loc)
         self.model.load_state_dict(snapshot["MODEL_STATE"])
         self.epochs_run = snapshot["EPOCHS_RUN"]
@@ -54,11 +63,11 @@ class Trainer:
 
     def _run_epoch(self, epoch):
         b_sz = len(next(iter(self.train_data))[0])
-        print(f"[GPU{self.gpu_id}] Epoch {epoch} | Batchsize: {b_sz} | Steps: {len(self.train_data)}")
+        print(f"[GPU{self.global_rank}] Epoch {epoch} | Batchsize: {b_sz} | Steps: {len(self.train_data)}")
         self.train_data.sampler.set_epoch(epoch)
         for source, targets in self.train_data:
-            source = source.to(self.gpu_id)
-            targets = targets.to(self.gpu_id)
+            source = source.to(self.local_rank)
+            targets = targets.to(self.local_rank)
             self._run_batch(source, targets)
 
     def _save_snapshot(self, epoch):
@@ -72,7 +81,7 @@ class Trainer:
     def train(self, max_epochs: int):
         for epoch in range(self.epochs_run, max_epochs):
             self._run_epoch(epoch)
-            if self.gpu_id == 0 and epoch % self.save_every == 0:
+            if self.local_rank == 0 and epoch % self.save_every == 0:
                 self._save_snapshot(epoch)
 
 
@@ -105,9 +114,31 @@ def main(save_every: int, total_epochs: int, batch_size: int, snapshot_path: str
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description='simple distributed training job')
-    parser.add_argument('total_epochs', type=int, help='Total epochs to train the model')
-    parser.add_argument('save_every', type=int, help='How often to save a snapshot')
-    parser.add_argument('--batch_size', default=32, type=int, help='Input batch size on each device (default: 32)')
+    
+    num_epochs_default = 1000
+    batch_size_default = 32
+
+
+    parser.add_argument(
+        "--total_epochs", "--num_epochs",
+        type=int,
+        help="Total epochs to train the model",
+        default=num_epochs_default,
+        dest='total_epochs'
+    )
+
+    #parser.add_argument('total_epochs', type=int, help='Total epochs to train the model')
+    parser.add_argument('--save_every',
+        type=int,
+        help='How often to save a snapshot',
+        default = 10,
+        dest='save_every')
+
+    parser.add_argument('--batch_size', 
+        type=int,
+        help='Input batch size on each device (default: 32)',
+        default=batch_size_default,)
+
     args = parser.parse_args()
     
     main(args.save_every, args.total_epochs, args.batch_size)

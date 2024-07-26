@@ -64,7 +64,7 @@ def evaluate(model, device, test_loader):
 def main():
     num_epochs_default = 100
     batch_size_default = 32
-    image_size_default = 224
+    image_size_default = 32
     learning_rate_default = 0.1
     random_seed_default = 0
     model_dir_default = "/glade/work/negins/consulting/jschreck/saved_models"
@@ -306,15 +306,24 @@ def main():
 
             if epoch > 0:
                 times.append(elapsed)
-                print(
-                    "num_steps_per_gpu: {}, avg_step_time: {:.4f}".format(
-                        count, elapsed / count
+                if WORLD_RANK==0:
+                    print(
+                        "num_steps_per_gpu: {}, avg_step_time: {:.4f}".format(
+                            count, elapsed / count
+                        )
                     )
-                )
 
     avg_time = sum(times) / (num_epochs - 1)
 
-    print("Average epoch time: {}".format(avg_time))
+    if WORLD_RANK == 0:
+        print("Average epoch time: {}".format(avg_time))
+    
+        log_file_path = "resnet_benchmark.log"
+        with open(log_file_path, 'a') as log_file:
+            if backend == 'nccl':
+                nccl_version= '-'.join(map(str, torch.cuda.nccl.version()))
+                log_file.write(f"{backend} {nccl_version}: Average epoch time: {avg_time} sec.\n")
+
 
 
 if __name__ == "__main__":

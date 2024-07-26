@@ -13,15 +13,32 @@ from torch.distributed import init_process_group, destroy_process_group
 import os
 
 
-print ('----------------------')
-print ('cuda device : ', torch.cuda.device_count())
-print ('pytorch version : ', torch.__version__)
-print ('nccl version : ', print(torch.cuda.nccl.version()))
-print ('----------------------')   
 
+
+if "LOCAL_RANK" in os.environ:
+    # Environment variables set by torch.distributed.launch or torchrun
+    LOCAL_RANK = int(os.environ["LOCAL_RANK"])
+    WORLD_SIZE = int(os.environ["WORLD_SIZE"])
+    WORLD_RANK = int(os.environ["RANK"])
+elif "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ:
+    # Environment variables set by mpirun
+    LOCAL_RANK = int(os.environ["OMPI_COMM_WORLD_LOCAL_RANK"])
+    WORLD_SIZE = int(os.environ["OMPI_COMM_WORLD_SIZE"])
+    WORLD_RANK = int(os.environ["OMPI_COMM_WORLD_RANK"])
+else:
+    import sys
+    sys.exit("Can't find the evironment variables for local rank")
+
+if LOCAL_RANK==0:
+    print ('----------------------')
+    print ('cuda device : ', torch.cuda.device_count())
+    print ('pytorch version : ', torch.__version__)
+    print ('nccl version : ', torch.cuda.nccl.version())
+    print ('----------------------')   
 
 def ddp_setup():
-    init_process_group(backend="nccl")
+    #init_process_group(backend="nccl")
+    init_process_group(backend="nccl", rank=WORLD_RANK, world_size=WORLD_SIZE)
     torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
 
 class Trainer:

@@ -10,6 +10,8 @@ import torch.optim as optim
 
 import torchvision
 import torchvision.transforms as transforms
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+
 
 import argparse
 import os
@@ -30,7 +32,6 @@ elif "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ:
     WORLD_RANK = int(os.environ["OMPI_COMM_WORLD_RANK"])
 else:
     import sys
-
     sys.exit("Can't find the evironment variables for local rank")
 
 
@@ -61,8 +62,8 @@ def evaluate(model, device, test_loader):
 
 
 def main():
-    num_epochs_default = 10000
-    batch_size_default = 256
+    num_epochs_default = 100
+    batch_size_default = 32
     image_size_default = 224
     learning_rate_default = 0.1
     random_seed_default = 0
@@ -132,7 +133,7 @@ def main():
         "--arch",
         type=str,
         help="Model architecture.",
-        default="resnet50",
+        default="resnet18",
         choices=["resnet50", "resnet18", "resnet101", "resnet152"],
     )
     parser.add_argument("--use_syn", action="store_true", help="Use synthetic data")
@@ -142,6 +143,12 @@ def main():
         help="Step per epoch for training with synthetic data",
         default=steps_syn_default,
     )
+    parser.add_argument(
+        "--use_fsdp",
+        action="store_true",
+        help="Use Fully Sharded Data Parallel instead of Distributed Data Parallel",
+    )
+
     argv = parser.parse_args()
 
     local_rank = argv.local_rank
@@ -175,15 +182,22 @@ def main():
     torch.distributed.init_process_group(
         backend=backend, rank=WORLD_RANK, world_size=WORLD_SIZE
     )
+    torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
 
     # Encapsulate the model on the GPU assigned to the current process
     model = getattr(torchvision.models, argv.arch)(pretrained=False)
 
     device = torch.device("cuda:{}".format(LOCAL_RANK))
-    model = model.to(device)
-    ddp_model = torch.nn.parallel.DistributedDataParallel(
-        model, device_ids=[LOCAL_RANK], output_device=LOCAL_RANK
-    )
+    print ("device:", device, "world_rank:", WORLD_RANK, "local_rank:", LOCAL_RANK)
+    local_rank = LOCAL_RANK
+    model = model.to(local_rank)
+
+    if argv.use_fsdp:
+        ddp_model = FullyShardedDataParallel(model, flatten_parameters=True)
+    else:
+        ddp_model = torch.nn.parallel.DistributedDataParallel(
+            model, device_ids=[LOCAL_RANK], output_device=LOCAL_RANK
+        )
 
     # We only save the model who uses device "cuda:0"
     # To resume, the device for the saved model would also be "cuda:0"
@@ -239,12 +253,12 @@ def main():
     # Loop over the dataset multiple times
     times = []
     for epoch in range(num_epochs):
-        print("Local Rank: {}, Epoch: {}, Training ...".format(LOCAL_RANK, epoch))
+        print("Local Rank: {}, GPU: {}, Epoch: {}, Training ...".format(LOCAL_RANK, WORLD_RANK, epoch))
 
         # Save and evaluate model routinely
         if not use_syn:
             if epoch % 10 == 0:
-                if LOCAL_RANK == 0:
+                if WORLD_RANK == 0:
                     accuracy = evaluate(
                         model=ddp_model, device=device, test_loader=test_loader
                     )

@@ -93,7 +93,30 @@ fi
 
 
 #########################################
-ENABLE_NCCL_OFI=1  # Set to 1 to enable, 0 to disable
+ENABLE_NCCL_OFI=0  # Set to 1 to enable, 0 to disable
+
+activate_nccl_ofi() {
+  local enable_nccl_ofi=$1
+
+  if [ "$enable_nccl_ofi" -eq 1 ]; then
+    #########################################
+    # NCCL OFI settings (from Daniel Howard):
+    export NCCL_HOME=/glade/u/home/dhoward/work/nccl-ofi-plugin/install
+    export LD_LIBRARY_PATH=$NCCL_HOME/lib:$NCCL_HOME/plugin/lib:$LD_LIBRARY_PATH
+
+    export NCCL_NCHANNELS_PER_NET_PEER=4
+    export MPICH_GPU_SUPPORT_ENABLED=1
+    export MPICH_OFI_NIC_POLICY=GPU
+    export MPICH_RDMA_ENABLED_CUDA=1
+    export NCCL_IB_DISABLE=1
+    export NCCL_CROSS_NIC=1
+    export NCCL_NET="AWS Libfabric" # not needed from Negin's opinion
+    export NCCL_NET_GDR_LEVEL=PBH
+    export NCCL_DEBUG=INFO
+    #########################################
+  fi
+}
+
 
 if [ "$ENABLE_NCCL_OFI" -eq 1 ]; then
   #########################################
@@ -122,8 +145,13 @@ which mpiexec
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 
 
+ENABLE_NCCL_OFI=0  # Set to 1 to enable, 0 to disable
+activate_nccl_ofi $ENABLE_NCCL_OFI
+
 # -- does not work:
 #python -m torch.utils.collect_env
+echo "------------------------------------" >> benchmark_results.log
+echo "ENABLE_NCCL_OFI" $ENABLE_NCCL_OFI >> benchmark_results.log
 
 # send_recv speed tests (nccl vs. gloo):
 mpiexec -n 2 --ppn 1 --cpu-bind none torchrun --nnodes=2 --nproc-per-node=4 --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip send_recv_test.py --backend nccl
@@ -131,5 +159,21 @@ mpiexec -n 2 --ppn 1 --cpu-bind none torchrun --nnodes=2 --nproc-per-node=4 --rd
 
 
 # allreduce speed tests (nccl vs. gloo):
-#mpiexec -n 2 --ppn 1 --cpu-bind none torchrun --nnodes=2 --nproc-per-node=4 --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip send_recv_test.py --backend nccl
-#mpiexec -n 2 --ppn 1 --cpu-bind none torchrun --nnodes=2 --nproc-per-node=4 --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip send_recv_test.py --backend gloo
+mpiexec -n 2 --ppn 1 --cpu-bind none torchrun --nnodes=2 --nproc-per-node=4 --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip all_reduce_test.py --backend nccl
+mpiexec -n 2 --ppn 1 --cpu-bind none torchrun --nnodes=2 --nproc-per-node=4 --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip all_reduce_test.py --backend gloo
+
+ENABLE_NCCL_OFI=1
+activate_nccl_ofi $ENABLE_NCCL_OFI
+
+echo "ENABLE_NCCL_OFI" $ENABLE_NCCL_OFI >> benchmark_results.log
+# send_recv speed tests (nccl vs. gloo):
+mpiexec -n 2 --ppn 1 --cpu-bind none torchrun --nnodes=2 --nproc-per-node=4 --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip send_recv_test.py --backend nccl
+mpiexec -n 2 --ppn 1 --cpu-bind none torchrun --nnodes=2 --nproc-per-node=4 --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip send_recv_test.py --backend gloo
+
+
+# allreduce speed tests (nccl vs. gloo):
+mpiexec -n 2 --ppn 1 --cpu-bind none torchrun --nnodes=2 --nproc-per-node=4 --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip all_reduce_test.py --backend nccl
+mpiexec -n 2 --ppn 1 --cpu-bind none torchrun --nnodes=2 --nproc-per-node=4 --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip all_reduce_test.py --backend gloo
+
+
+echo "------------------------------------" >> benchmark_results.log

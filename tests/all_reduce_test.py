@@ -15,9 +15,9 @@ WORLD_RANK = int(os.environ['RANK'])
 
 if WORLD_RANK == 0:
     print('----------------------')
-    print('LOCAL_RANK  : ', LOCAL_RANK)
+    #print('LOCAL_RANK  : ', LOCAL_RANK)
+    #print('WORLD_RANK  : ', WORLD_RANK)
     print('WORLD_SIZE  : ', WORLD_SIZE)
-    print('WORLD_RANK  : ', WORLD_RANK)
     print('cuda device : ', torch.cuda.device_count())
     print('pytorch version : ', torch.__version__)
     print('nccl version : ', torch.cuda.nccl.version())

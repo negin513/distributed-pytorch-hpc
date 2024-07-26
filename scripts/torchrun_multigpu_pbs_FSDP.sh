@@ -48,6 +48,6 @@ export FI_CXI_OPTIMIZED_MRS=false
 #export NCCL_NET_GDR_LEVEL=PBH
 
 
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 mpiexec -n 2 --ppn 1 --cpu-bind none torchrun --nnodes=2 --nproc-per-node=4 --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip multigpu_resnet.py 
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 mpiexec -n 2 --ppn 1 --cpu-bind none torchrun --nnodes=2 --nproc-per-node=4 --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip main.py 
 
 #mpiexec -n 2 --ppn 4 set_gpu_rank torchrun --nnodes=2 --nproc-per-node=4 --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip test.py

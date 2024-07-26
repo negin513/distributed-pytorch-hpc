@@ -30,6 +30,10 @@ def run(backend):
     if backend == "nccl":
         device = torch.device("cuda:{}".format(LOCAL_RANK))
         tensor = tensor.to(device)
+    elif backend == "gloo":
+        device = torch.device("cpu")  # Gloo backend works with CPU
+        tensor = tensor.to(device)
+    
 
     if WORLD_RANK == 0:
         for rank_recv in range(1, WORLD_SIZE):

@@ -82,7 +82,12 @@ def init_processes(backend):
         print (f"{backend}: warmup: {warmup} sec benchmark time: {benchmark} sec")
         log_file_path = "benchmark_results.log"
         with open(log_file_path, 'a') as log_file:
-            log_file.write(f"{backend}: warmup: {warmup} sec benchmark time: {benchmark} sec.\n")
+            if backend == 'nccl':
+                nccl_version= '-'.join(map(str, torch.cuda.nccl.version()))
+                print (nccl_version)
+                log_file.write(f"{backend} {nccl_version}: warmup: {warmup} sec, benchmark time: {benchmark} sec.\n")
+            else:
+                log_file.write(f"{backend}: warmup: {warmup} sec, benchmark time: {benchmark} sec.\n")
 
 
 

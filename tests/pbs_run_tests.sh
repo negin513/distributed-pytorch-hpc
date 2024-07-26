@@ -118,26 +118,6 @@ activate_nccl_ofi() {
 }
 
 
-if [ "$ENABLE_NCCL_OFI" -eq 1 ]; then
-  #########################################
-  # NCCL OFI settings (from Daniel Howard):
-  export NCCL_HOME=/glade/u/home/dhoward/work/nccl-ofi-plugin/install
-  export LD_LIBRARY_PATH=$NCCL_HOME/lib:$NCCL_HOME/plugin/lib:$LD_LIBRARY_PATH
-
-  export NCCL_NCHANNELS_PER_NET_PEER=4
-  export MPICH_GPU_SUPPORT_ENABLED=1
-  export MPICH_OFI_NIC_POLICY=GPU
-  export MPICH_RDMA_ENABLED_CUDA=1
-  #export NCCL_DISABLE_IB=1 ## not correct variable in Daniel's email:
-  export NCCL_IB_DISABLE=1
-  export NCCL_CROSS_NIC=1
-  export NCCL_NET="AWS Libfabric" # not needed from Negin's opinion
-  export NCCL_NET_GDR_LEVEL=PBH
-  #NCCL_SHM_DISABLE
-  #########################################
-fi
-
-
 #########################################
 
 

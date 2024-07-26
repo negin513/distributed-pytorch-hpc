@@ -323,6 +323,8 @@ def main():
             if backend == 'nccl':
                 nccl_version= '-'.join(map(str, torch.cuda.nccl.version()))
                 log_file.write(f"{backend} {nccl_version}: Average epoch time: {avg_time} sec.\n")
+    
+    time.sleep(2)
 
 
 

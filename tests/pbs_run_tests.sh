@@ -15,8 +15,8 @@
 # Load modules
 module purge
 #module load nvhpc cuda cudnn cray-mpich 
-module load conda nvhpc cray-mpich
-#module load conda intel cray-mpich
+module load conda nvhpc cray-mpich cuda cudnn
+#module load conda intel cray-mpich cuda cudnn
 
 
 ## Load the conda environment
@@ -71,8 +71,8 @@ export FI_CXI_OPTIMIZED_MRS=false
 
 # -- old settings not sure if they had large impacts:
 
-#export NCCL_SHM_DISABLE=1 # probably doesn't matter
-#export NCCL_IB_DISABLE=1  # probably doesn't matter
+export NCCL_SHM_DISABLE=1 # probably doesn't matter
+export NCCL_IB_DISABLE=1  # probably doesn't matter
 export NCCL_CROSS_NIC=1 # should have an impact based on docs but it does not. (Josh Romero said improve perf on non-rail optimized networks)
 #export NCCL_NET_GDR_LEVEL=PHB
 ###exexport OMP_NUM_THREADS=16

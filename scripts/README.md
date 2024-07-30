@@ -16,7 +16,6 @@ This will give you timing results for the training jobs in `reresnet_benchmark.l
 Preliminary results show that the NCCL OFI plugin can provide a significant speedup for multi-GPU training on Derecho.
 
 ```
-with OFI plugin: 
 w/o OFI plugin : nccl 2-19-3: Average epoch time: 4.805356439917978 sec.
 w OFI plugin     nccl 2-19-3: Average epoch time: 2.795084637824935 sec.
 ```

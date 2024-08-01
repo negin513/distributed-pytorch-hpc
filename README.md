@@ -13,6 +13,28 @@ The goal of this repository is to provide a starting point for researchers who w
 
 In this repository, we provide examples of how to train a ResNet model on multiple GPUs across multiple nodes using PyTorch's Distributed Data Parallel (DDP) library and Fully Sharded Data Parallel (FSDP) library.
 
+
+## Contents
+
+In this repository, you will find the following:
+
+- [`test/`](tests/README.md): This directory contains test scripts for testing performance of nccl with example PBS scripts of running them.  
+- [`scripts/`](scripts/README.md): This directory contains example PBS scripts for training multi-node, multi-GPU ResNet on Derecho using PyTorch's DDP. It includes timing and stats summary useful for performance analysis.
+- `tutorials/`: This directory contains simple scripts for testing torch and nccl installation on Derecho with example PBS scripts of running them and explaining the arguments.
+- `environment.yml` : This file contains the conda environment for running the example workflows.
+
+
+## How to Make the Environment:
+
+To create the conda environment, you can use the following command:
+
+```bash
+module load conda
+CONDA_OVERRIDE_CUDA=12.1 mamba env create -f environment.yml
+conda activate pytorch_cuda_env
+```
+
+
 ## What is DDP?
 
 Distributed Data Parallel (DDP) is a PyTorch library that allows you to train your model on multiple GPUs across multiple nodes. DDP is a wrapper around PyTorch's `torch.nn.DataParallel` module, which is used to parallelize the training of a model across multiple GPUs on a single node. DDP extends this functionality to multiple nodes, allowing you to scale your training to hundreds of GPUs.

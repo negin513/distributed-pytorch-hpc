@@ -4,14 +4,12 @@
 
 Developed by : [Negin Sobhani](https://github.com/negin513)
 
-This repostory contains example workflows with for executing multi-node, multi-GPU machine learning training using PyTorch on NCAR's HPC Supercomputers (i.e. Derecho). 
+This repostory contains example workflows with for executing multi-node, multi-GPU machine learning training using PyTorch on NCAR's HPC Supercomputers (i.e. Derecho). This repository also includes test scripts for testing performance of nccl with example PBS scripts of running them.
 
 While this code is written to run directly on [Derecho](https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/) GPU nodes, it can be adapted for other GPU HPC machines. 
 Each [Derecho](https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/) node has 4 NVIDIA A100 GPUs. The examples in this repository demonstrate how to train a model on multiple GPUs across multiple nodes using `torch.distribtued` and `torchrun`.
 
 The goal of this repository is to provide a starting point for researchers who want to scale their PyTorch training to multiple GPUs and nodes on NCAR's HPC systems.
-
-In this repository, we provide examples of how to train a ResNet model on multiple GPUs across multiple nodes using PyTorch's Distributed Data Parallel (DDP) library and Fully Sharded Data Parallel (FSDP) library.
 
 
 ## Contents
@@ -19,7 +17,7 @@ In this repository, we provide examples of how to train a ResNet model on multip
 In this repository, you will find the following:
 
 - [`test/`](tests/README.md): This directory contains test scripts for testing performance of nccl with example PBS scripts of running them.  
-- [`scripts/`](scripts/README.md): This directory contains example PBS scripts for training multi-node, multi-GPU ResNet on Derecho using PyTorch's DDP. It includes timing and stats summary useful for performance analysis.
+- [`scripts/`](scripts/README.md): This directory contains example PBS scripts for training multi-node, multi-GPU neural network on Derecho using PyTorch's DDP. It includes timing and stats summary useful for performance analysis.
 - `tutorials/`: This directory contains simple scripts for testing torch and nccl installation on Derecho with example PBS scripts of running them and explaining the arguments.
 - `environment.yml` : This file contains the conda environment for running the example workflows.
 

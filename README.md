@@ -1,6 +1,6 @@
 # Multi-Node Multi-GPU PyTorch Training on NCAR's Derecho
 
-** Under Development!!! **
+**Under Development!!!**
 
 Developed by : [Negin Sobhani](https://github.com/negin513)
 

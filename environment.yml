@@ -5,6 +5,7 @@ channels:
   - conda-forge
 dependencies:
   - python=3.11.*
+  - libblas=*=*mkl
   - numpy<1.24
   - xarray
   - pandas

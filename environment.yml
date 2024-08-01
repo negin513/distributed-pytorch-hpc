@@ -1,16 +1,13 @@
-name: torch_cuda
+name: pytorch_cuda_env
 channels:
   - pytorch
   - nvidia
   - conda-forge
 dependencies:
   - python=3.11.*
-  - libblas=*=*mkl
-  - numpy
-  - scipy
+  - numpy<1.24
+  - xarray
   - pandas
-  - scikit-learn
   - pytorch=2.1.2
   - torchvision=0.16.2
-  - torchaudio=2.1.2
   - pytorch-cuda=12.1

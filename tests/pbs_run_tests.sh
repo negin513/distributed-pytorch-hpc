@@ -20,6 +20,7 @@ module load conda intel cray-mpich
 
 ## Load the conda environment
 conda activate /glade/work/negins/conda-envs/pytorch_cuda_env
+#conda activate /glade/work/negins/conda-envs/torch_cuda
 #conda activate /glade/work/schreck/conda-envs/holodec
 
 which torchrun

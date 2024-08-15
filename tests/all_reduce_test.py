@@ -21,6 +21,8 @@ if WORLD_RANK == 0:
     print("cuda device : ", torch.cuda.device_count())
     print("pytorch version : ", torch.__version__)
     print("nccl version : ", torch.cuda.nccl.version())
+    print("torch config : ", torch.__config__.show())
+    print(torch.__config__.parallel_info())
     print("----------------------")
 
 
@@ -132,7 +134,7 @@ if __name__ == "__main__":
         type=int,
         help="Local rank. Necessary for using the torch.distributed.launch utility.",
     )
-    parser.add_argument("--backend", type=str, default="nccl", choices=["nccl", "gloo"])
+    parser.add_argument("--backend", type=str, default="nccl", choices=["nccl", "gloo","mpi"])
     args = parser.parse_args()
 
     init_processes(backend=args.backend)

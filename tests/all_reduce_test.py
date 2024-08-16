@@ -1,17 +1,37 @@
+#!/usr/bin/env python3
+
 # Description: This script is used to benchmark the performance of the all_reduce and broadcast operations using the nccl and gloo backends.
 
 import os
 import time
 import argparse
 import statistics
-
+import socket
 import torch
 import torch.distributed as dist
 
-# Environment variables set by torch.distributed.launch
-LOCAL_RANK = int(os.environ["LOCAL_RANK"])
-WORLD_SIZE = int(os.environ["WORLD_SIZE"])
-WORLD_RANK = int(os.environ["RANK"])
+try:
+    # Environment variables set by cray-mpich's mpiexec
+    # (refactor later to get these from the MPI communicator,
+    # independent of mpiexec implementation)
+    from mpi4py import MPI
+    comm = MPI.COMM_WORLD
+    shmem_comm = comm.Split_type(MPI.COMM_TYPE_SHARED)
+
+    LOCAL_RANK = shmem_comm.Get_rank()
+    #LOCAL_RANK = int(os.environ["PMI_LOCAL_RANK"])
+    WORLD_SIZE = comm.Get_size()
+    WORLD_RANK = comm.Get_rank()
+    os.environ['MASTER_ADDR'] = comm.bcast( socket.gethostbyname( socket.gethostname() ), root=0 )
+    os.environ['MASTER_PORT'] = '29500'
+    print ("hello")
+
+except:
+    # Environment variables set by torch.distributed.launch
+    LOCAL_RANK = int(os.environ["LOCAL_RANK"])
+    WORLD_SIZE = int(os.environ["WORLD_SIZE"])
+    WORLD_RANK = int(os.environ["RANK"])
+
 
 if WORLD_RANK == 0:
     print("----------------------")
@@ -27,7 +47,8 @@ if WORLD_RANK == 0:
 
 
 def run_broadcast(backend, timing_list):
-    tensor = torch.ones((1000, 1000))
+    tensor = torch.ones((10000, 1000))
+
     # Need to put tensor on a GPU device for nccl backend
     if backend == "nccl":
         device = torch.device("cuda:{}".format(LOCAL_RANK))

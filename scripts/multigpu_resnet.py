@@ -1,33 +1,53 @@
+#!/usr/bin/env python3
 # example of multinode multi-gpu training
 # code adapted from LambdaLabsML
 
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
-from datautils import MyTrainDataset
 
 import torch.multiprocessing as mp
 from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 import os
+import socket
+import torch
+from torch.utils.data import Dataset
 
+class MyTrainDataset(Dataset):
+    def __init__(self, size):
+        self.size = size
+        self.data = [(torch.rand(20), torch.rand(1)) for _ in range(size)]
 
+    def __len__(self):
+        return self.size
+    
+    def __getitem__(self, index):
+        return self.data[index]
+try: 
+    from mpi4py import MPI
+    comm = MPI.COMM_WORLD
+    shmem_comm = comm.Split_type(MPI.COMM_TYPE_SHARED)
 
+    LOCAL_RANK = shmem_comm.Get_rank()
+    WORLD_SIZE = comm.Get_size()
+    WORLD_RANK = comm.Get_rank()
 
-if "LOCAL_RANK" in os.environ:
-    # Environment variables set by torch.distributed.launch or torchrun
-    LOCAL_RANK = int(os.environ["LOCAL_RANK"])
-    WORLD_SIZE = int(os.environ["WORLD_SIZE"])
-    WORLD_RANK = int(os.environ["RANK"])
-elif "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ:
-    # Environment variables set by mpirun
-    LOCAL_RANK = int(os.environ["OMPI_COMM_WORLD_LOCAL_RANK"])
-    WORLD_SIZE = int(os.environ["OMPI_COMM_WORLD_SIZE"])
-    WORLD_RANK = int(os.environ["OMPI_COMM_WORLD_RANK"])
-else:
-    import sys
-    sys.exit("Can't find the evironment variables for local rank")
+    os.environ['MASTER_ADDR'] = comm.bcast( socket.gethostbyname( socket.gethostname() ), root=0 )
+    os.environ['MASTER_PORT'] =	'1234'
+except:
+
+    if "LOCAL_RANK" in os.environ:
+        # Environment variables set by torch.distributed.launch or torchrun
+        LOCAL_RANK = int(os.environ["LOCAL_RANK"])
+        WORLD_SIZE = int(os.environ["WORLD_SIZE"])
+        WORLD_RANK = int(os.environ["RANK"])
+    elif "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ:
+        # Environment variables set by mpirun
+        LOCAL_RANK = int(os.environ["OMPI_COMM_WORLD_LOCAL_RANK"])
+        WORLD_SIZE = int(os.environ["OMPI_COMM_WORLD_SIZE"])
+        WORLD_RANK = int(os.environ["OMPI_COMM_WORLD_RANK"])
 
 if LOCAL_RANK==0:
     print ('----------------------')
@@ -36,10 +56,11 @@ if LOCAL_RANK==0:
     print ('nccl version : ', torch.cuda.nccl.version())
     print ('----------------------')   
 
-def ddp_setup():
+def ddp_setup(backend):
     #init_process_group(backend="nccl")
-    init_process_group(backend="nccl", rank=WORLD_RANK, world_size=WORLD_SIZE)
-    torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
+    init_process_group(backend=backend, rank=WORLD_RANK, world_size=WORLD_SIZE)
+    #init_process_group(backend="nccl", rank=WORLD_RANK, world_size=WORLD_SIZE)
+    #torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
 
 class Trainer:
     def __init__(
@@ -50,8 +71,8 @@ class Trainer:
         save_every: int,
         snapshot_path: str,
     ) -> None:
-        self.local_rank = int(os.environ["LOCAL_RANK"])
-        self.global_rank = int(os.environ["RANK"])
+        self.local_rank = LOCAL_RANK
+        self.global_rank = WORLD_RANK
         self.model = model.to(self.local_rank)
         self.train_data = train_data
         self.optimizer = optimizer
@@ -119,8 +140,8 @@ def prepare_dataloader(dataset: Dataset, batch_size: int):
     )
 
 
-def main(save_every: int, total_epochs: int, batch_size: int, snapshot_path: str = "snapshot.pt"):
-    ddp_setup()
+def main(save_every: int, total_epochs: int, batch_size: int, snapshot_path: str = "snapshot.pt", backend: str = "nccl"):
+    ddp_setup(backend)
     dataset, model, optimizer = load_train_objs()
     train_data = prepare_dataloader(dataset, batch_size)
     trainer = Trainer(model, train_data, optimizer, save_every, snapshot_path)
@@ -144,6 +165,8 @@ if __name__ == "__main__":
         dest='total_epochs'
     )
 
+    parser.add_argument("--backend", type=str, default="nccl", choices=["nccl", "gloo","mpi"])
+
     #parser.add_argument('total_epochs', type=int, help='Total epochs to train the model')
     parser.add_argument('--save_every',
         type=int,
@@ -158,4 +181,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     
-    main(args.save_every, args.total_epochs, args.batch_size)
+    main(args.save_every, args.total_epochs, args.batch_size, args.backend)

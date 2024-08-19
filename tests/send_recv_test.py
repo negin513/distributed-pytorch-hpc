@@ -29,7 +29,7 @@ if WORLD_RANK == 0:
 
 def run(backend, timing_list):
     # tensor = torch.zeros(1000000)
-    tensor = torch.zeros((1000, 1000))
+    tensor = torch.zeros((10000, 1000))
     # Need to put tensor on a GPU device for nccl backend
     if backend == "nccl":
         device = torch.device("cuda:{}".format(LOCAL_RANK))

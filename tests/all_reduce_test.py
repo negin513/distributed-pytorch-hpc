@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import os
 import time
 import argparse
@@ -7,7 +5,7 @@ import statistics
 import socket
 import torch
 import torch.distributed as dist
-
+print ("hello!")
 try:
     from mpi4py import MPI
     comm = MPI.COMM_WORLD
@@ -20,9 +18,20 @@ try:
     os.environ['MASTER_PORT'] = '29500'
 
 except:
-    LOCAL_RANK = int(os.environ["LOCAL_RANK"])
-    WORLD_SIZE = int(os.environ["WORLD_SIZE"])
-    WORLD_RANK = int(os.environ["RANK"])
+    if "LOCAL_RANK" in os.environ:
+        # Environment variables set by torch.distributed.launch or torchrun
+        LOCAL_RANK = int(os.environ["LOCAL_RANK"])
+        WORLD_SIZE = int(os.environ["WORLD_SIZE"])
+        WORLD_RANK = int(os.environ["RANK"])
+    elif "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ:
+        # Environment variables set by mpirun
+        LOCAL_RANK = int(os.environ["OMPI_COMM_WORLD_LOCAL_RANK"])
+        WORLD_SIZE = int(os.environ["OMPI_COMM_WORLD_SIZE"])
+        WORLD_RANK = int(os.environ["OMPI_COMM_WORLD_RANK"])
+    else:
+        print ("Error: No environment variables set for distributed training")
+
+print (LOCAL_RANK, WORLD_SIZE, WORLD_RANK) 
 
 if WORLD_RANK == 0:
     print("----------------------")
@@ -150,7 +159,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     tensor_sizes = [(s,) if isinstance(s, int) else s for s in args.tensor_sizes]
-    tensor_sizes = [int(10**i) for i in range(3, 10+1)]
+    tensor_sizes = [int(10**i) for i in range(3, 9)]
 
     print (tensor_sizes)
     init_processes(backend=args.backend, tensor_sizes=tensor_sizes)

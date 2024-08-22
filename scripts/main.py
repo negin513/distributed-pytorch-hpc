@@ -31,7 +31,8 @@ try:
     WORLD_SIZE = comm.Get_size()
     WORLD_RANK = comm.Get_rank()
 
-
+    os.environ['MASTER_ADDR'] = comm.bcast( socket.gethostbyname( socket.gethostname() ), root=0 )
+    os.environ['MASTER_PORT'] =	'1234'
 
 except:
     if "LOCAL_RANK" in os.environ:
@@ -56,7 +57,7 @@ except:
 if "MASTER_ADDR" not in os.environ:
     os.environ['MASTER_ADDR'] = comm.bcast( socket.gethostbyname( socket.gethostname() ), root=0 )
 if "MASTER_PORT" not in os.environ:
-    os.environ['MASTER_PORT'] = np.random.randint(1000,8000)
+    os.environ['MASTER_PORT'] = str(np.random.randint(1000,8000))
 
 
 if WORLD_RANK == 0:
@@ -99,7 +100,7 @@ def evaluate(model, device, test_loader):
 
 
 def main():
-    num_epochs_default = 5
+    num_epochs_default = 10
     batch_size_default = 32
     image_size_default = 32
     learning_rate_default = 0.1
@@ -358,18 +359,13 @@ def main():
         with open(log_file_path, 'a') as log_file:
             log_file.write("--------------------------------------------------\n")
             log_file.write("ResNet Benchmark\n")
-            log_file.write(time.strftime("%Y-%m-%d %H:%M:%S\n"))
-            log_file.write ('WORLD_SIZE  : ', WORLD_SIZE)
-            log_file.write("cuda device : ", torch.cuda.device_count())
-            log_file.write("pytorch version : ", torch.__version__)
-            log_file.write("nccl version : ", torch.cuda.nccl.version())
-            log_file.write("torch config : ", torch.__config__.show())
-            log_file.write(torch.__config__.parallel_info())
-            log_file.write('Epochs: ', num_epochs)
-            log_file.write('Batch size: ', batch_size)
-            log_file.write('Image size: ', image_size)
-            log_file.write('Learning rate: ', learning_rate)
-            log_file.write('Number of steps per epoch: ', steps_syn) 
+            log_file.write(f"WORLD_SIZE  : {WORLD_SIZE}\n")
+            log_file.write(f"cuda device : {torch.cuda.device_count()}\n")
+            log_file.write(f"pytorch version : {torch.__version__}\n")
+            log_file.write(f"torch config : {torch.__config__.show()}\n")
+            log_file.write(f"{torch.__config__.parallel_info()}\n")
+            log_file.write(f"Epochs: {num_epochs}\n")
+            log_file.write(f"Batch size: {batch_size}\n")
             log_file.write("----------------------\n")
 
             if backend == 'nccl':

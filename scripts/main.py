@@ -31,9 +31,6 @@ try:
     WORLD_SIZE = comm.Get_size()
     WORLD_RANK = comm.Get_rank()
 
-    os.environ['MASTER_ADDR'] = comm.bcast( socket.gethostbyname( socket.gethostname() ), root=0 )
-    os.environ['MASTER_PORT'] =	'1234'
-
 except:
     if "LOCAL_RANK" in os.environ:
         # Environment variables set by torch.distributed.launch or torchrun
@@ -100,9 +97,9 @@ def evaluate(model, device, test_loader):
 
 
 def main():
-    num_epochs_default = 10
-    batch_size_default = 32
-    image_size_default = 32
+    num_epochs_default = 100
+    batch_size_default = 256
+    image_size_default = 224
     learning_rate_default = 0.1
     random_seed_default = 0
     model_dir_default = "/glade/work/negins/consulting/jschreck/saved_models"
@@ -186,6 +183,13 @@ def main():
         action="store_true",
         help="Use Fully Sharded Data Parallel instead of Distributed Data Parallel",
     )
+    parser.add_argument(
+        "--logfile",
+        type=str,
+        help="Log file for benchmark results",
+        default="resnet_benchmark.log",
+    )
+
 
     argv = parser.parse_args()
 
@@ -203,6 +207,7 @@ def main():
     h = argv.image_size
     c = 3
     steps_syn = argv.steps_syn
+    log_file_path = argv.logfile
 
     # Create directories outside the PyTorch program
     # Do not create directory here because it is not multiprocess safe
@@ -299,7 +304,7 @@ def main():
                     accuracy = evaluate(
                         model=ddp_model, device=device, test_loader=test_loader
                     )
-                    torch.save(ddp_model.state_dict(), model_filepath)
+                    #torch.save(ddp_model.state_dict(), model_filepath)
                     print("-" * 75)
                     print("Epoch: {}, Accuracy: {}".format(epoch, accuracy))
                     print("-" * 75)
@@ -355,7 +360,6 @@ def main():
     if WORLD_RANK == 0:
         print("Average epoch time: {}".format(avg_time))
     
-        log_file_path = "resnet_benchmark.log"
         with open(log_file_path, 'a') as log_file:
             log_file.write("--------------------------------------------------\n")
             log_file.write("ResNet Benchmark\n")
@@ -370,9 +374,9 @@ def main():
 
             if backend == 'nccl':
                 nccl_version= '-'.join(map(str, torch.cuda.nccl.version()))
-                log_file.write(f"{backend} {nccl_version}: Average epoch time: {avg_time} sec.\n")
+                log_file.write(f"{WORLD_SIZE}gpus: {backend} {nccl_version}: Average epoch time: {avg_time} sec.\n")
             else:
-                log_file.write(f"{backend} \t : Average epoch time: {avg_time} sec.\n")
+                log_file.write(f"{WORLD_SIZE}gpus: {backend} \t : Average epoch time: {avg_time} sec.\n")
     
     time.sleep(2)
 

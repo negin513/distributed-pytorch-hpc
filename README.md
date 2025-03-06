@@ -1,9 +1,5 @@
 # Multi-Node Multi-GPU PyTorch Training on NCAR's Derecho
 
-**Under Development!!!**
-
-Developed by : [Negin Sobhani](https://github.com/negin513)
-
 This repostory contains example workflows with for executing multi-node, multi-GPU machine learning training using PyTorch on NCAR's HPC Supercomputers (i.e. Derecho). This repository also includes test scripts for testing performance of nccl with example PBS scripts of running them.
 
 While this code is written to run directly on [Derecho](https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/) GPU nodes, it can be adapted for other GPU HPC machines. 

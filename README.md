@@ -4,15 +4,22 @@
 
 Developed by : [Negin Sobhani](https://github.com/negin513)
 
-This repostory contains example workflows with for executing multi-node, multi-GPU machine learning training using PyTorch on NCAR's HPC Supercomputers (i.e. Derecho). This repository also includes test scripts for testing performance of nccl with example PBS scripts of running them.
+This repostory contains example workflows with for executing multi-node, multi-GPU machine learning training using PyTorch on NCAR's HPC Supercomputers (i.e. Derecho). 
 
-While this code is written to run directly on [Derecho](https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/) GPU nodes, it can be adapted for other GPU HPC machines. 
-Each [Derecho](https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/) node has 4 NVIDIA A100 GPUs. The examples in this repository demonstrate how to train a model on multiple GPUs across multiple nodes using `torch.distribtued` and `torchrun`.
+While this code is written to run directly on [Derecho](https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/) GPU nodes, it can be adapted for other GPU HPC machines.
 
-The goal of this repository is to provide a starting point for researchers who want to scale their PyTorch training to multiple GPUs and nodes on NCAR's HPC systems.
+Each [Derecho](https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/) node has 4 NVIDIA A100 GPUs. The examples in this repository demonstrate how to train a model on multiple GPUs across multiple nodes using `torch.distributed` and `torchrun`.
+
+The goal of this repository is to provide a starting point for researchers who want to scale their PyTorch training to multiple GPUs and nodes on Derecho.
+
+## Quick Start
+To get started with multi-node, multi-GPU PyTorch training on Derecho, follow these steps:
+
+```bash
 
 
-## Contents
+```
+## Repository Structure
 
 In this repository, you will find the following:
 
@@ -33,23 +40,54 @@ conda activate pytorch_cuda_env
 ```
 
 
-## What is DDP?
 
+## 🧩 Parallelism Strategies in PyTorch
+Modern deep learning training uses different parallelism strategies depending on model size, GPU memory, and scaling goals. PyTorch provides several built-in mechanisms for scaling across multiple GPUs and nodes.
+
+This repository follows the natural progression of these strategies:
+
+
+### 1. Distributed Data Parallel (DDP)
 Distributed Data Parallel (DDP) is a PyTorch library that allows you to train your model on multiple GPUs across multiple nodes. DDP is a wrapper around PyTorch's `torch.nn.DataParallel` module, which is used to parallelize the training of a model across multiple GPUs on a single node. DDP extends this functionality to multiple nodes, allowing you to scale your training to hundreds of GPUs.
 
-To learn more about DDP, check out the [official PyTorch DDP documentation](https://pytorch.org/tutorials/intermediate/ddp_tutorial.html).
+📘 Learn more: **[PyTorch DDP Tutorial](https://pytorch.org/tutorials/intermediate/ddp_tutorial.html)**
 
 
 
-## What is FSDP (Fully Sharded Data Parallelism)?
+### 2. Fully Sharded Data Parallel (FSDP)
 FSDP is a PyTorch library that allows you to train very large models that don't fit on a single GPU across multiple GPUs and nodes. FSDP shards the model parameters across multiple GPUs and nodes, allowing you to train very large models that don't fit on a single GPU. FSDP is a more advanced version of DDP that is specifically designed for training very large models on multiple GPUs and nodes. 
+
+To learn more about FSDP, check out the [official PyTorch FSDP documentation](https://pytorch.org/docs/stable/fsdp.html).
+
+FSDP handles very large models (1B+ parameters).... 
+
+
+
 Please see the image below for a comparison of DDP and FSDP:
 https://openmmlab.medium.com/its-2023-is-pytorch-s-fsdp-the-best-choice-for-training-large-models-fe8d2848832f
 
 
+### 3. Tensor Parallelism (TP)
+Tensor Parallelism (TP) is a technique used to split the model's tensors across multiple GPUs. This allows for training larger models that don't fit on a single GPU. TP is often used in conjunction with DDP or FSDP to further scale the training of large models.
+
+Layers are split within the model, and each GPU holds only a slice of a layer.
+GPUs share the same input batch
+Useful for extremely wide layers (Transformers)
+Built on PyTorch’s DeviceMesh APIs
+Use when: Individual layers are too large for a single GPU.
+
+### 4. Hybrid Parallelism (FSDP + TP)
+Combine data parallel sharding with intra-layer model parallelism.
+Enables 10B–100B parameter LLMs
+Common in GPT-style and LLaMA-style training
+Requires careful configuration of parallel dimensions
+Use when: Training very large foundation models at scale.
+
+
+
 ## What should I use? (DP vs. DDP vs. FSDP)
 
-- DP (Data Parallelism): Use this when you have a small model that fits on a single GPU and you want to train it on multiple GPUs on a single node. It is the simplest and most common form of parallelism in PyTorch.
+- DP (Data Parallelism): Use this when you have a small model that fits on a single GPU and you want to train it on multiple GPUs on a single node. It is the simplest and most common form of parallelism in PyTorch. 
 
 - DDP (Distributed Data Parallelism): Use this when you have a large model that doesn't fit on a single GPU and you want to train it on multiple GPUs across multiple nodes.
 
@@ -64,7 +102,19 @@ Here is a summary table of the different parallelism strategies:
 | **FSDP (Fully Sharded Data Parallel)** | Multiple            | Multiple                    | `mpirun` + `torchrun` with setup for sharding |
 
 
-## PyTorch PBS Commands Explained (`mpirun` and `torchrun`)
+| Strategy | Nodes Supported | GPUs per Node | Model Fits on 1 GPU? | What is Split? | Data Split? | Typical Use Case | How to Launch |
+|----------|------------------|----------------|-----------------------|----------------|--------------|------------------|----------------|
+| **DP (`nn.DataParallel`)** | 1 | ≥1 | Yes | Nothing (threading only) | Yes | Legacy single-node multi-GPU (NOT recommended) | None (in-script) |
+| **DDP (`torchrun`)** | 1 to many | ≥1 | Yes | Gradients (all-reduce) | Yes | Standard multi-GPU/multi-node training | `torchrun` (1 node) <br> `mpirun` + `torchrun` (multi-node) |
+| **FSDP (Fully Sharded)** | 1 to many | ≥1 | No | Params + Grads + Optim State (sharded) | Yes | Large models (1B+), memory-limited workloads | `mpirun` + `torchrun` |
+| **Tensor Parallel (TP)** | 1 to many | ≥2 | No (wide layers) | Model layers (intra-layer tensor shards) | No (all GPUs see same batch) | Transformers with very wide layers (e.g., attention) | `torchrun` + `DeviceMesh` config |
+| **Pipeline Parallel (PP)** | 1 to many | ≥1 | No (deep models) | Layers assigned to stages | Yes (per stage) | Very deep models; microbatch pipelines | `torchrun` with pipeline engine |
+| **Hybrid (FSDP + TP)** | 1 to many | ≥2 | No (massive models) | Both model + tensor shards | Yes | LLMs (10B–100B), foundation models | `mpirun` + `torchrun` with 2D mesh |
+
+
+
+----
+## Launching Multi-Node Jobs on Derecho 
 
 In order to use `torchrun` or `distributed.launch` to run distributed training (DDP or FSDP) on two nodes, you need ssh into each node, find the IP, and run the following command:
 
@@ -83,31 +133,38 @@ torchrun \
 ```
 
 In the above lines:
-
 - `--nodes` define the number of nodes.
 - `--nproc_per_node` define the number of GPUs per node.
 - `--node_rank` define the rank of the node which is `0` for the master node and `1` for the worker node.
 
-Although the above lines would work nicely on each node, one need start interactive jobs and then ssh into each node and run the command. To avoid this, we can use MPI to run the command on all nodes at once. 
+Although the above lines would work on each node, one need start interactive jobs and then ssh into each node and run the command. To avoid this, we can use **MPI** (Message Passing Interface) to run the command on all nodes at once. 
 
-MPI (Message Passing Interface) is a standard for parallel computing that allows you to run the same command on multiple nodes at once.  For example the following command using `mpiexec` would run the same command on all nodes (two nodes) at once:
+
+👉 ** You should not use this method for running distributed training jobs unless you have a specific reason to do so.**
+
+MPI (Message Passing Interface) is a standard for parallel computing that allows you to run the same command on multiple nodes at once.  
+
+
+For example the following command using `mpiexec` would run the same command on all nodes (two nodes) at once:
 
 ```bash
-## hello world!
-mpiexec -n 2 --ppn 1 echo "helloworld!"
+mpiexec -n 4 --ppn 2 echo "helloworld!"
 ```
 
-Or in the following example,  the `mpiexec` command would run the same `torchrun` command on all nodes (two nodes) at once. Next, `torchrun` runs the python code `tutorials/print_hostinfo.py`: 
+In the above line:
+- `-n` is the number of ranks.
+- `--ppn` is the number of ranks per node.
+
+We can extend this to run `torchrun` on all nodes at once using `mpiexec`.
+Here, the `mpiexec` command would run the same `torchrun` command on all nodes (two nodes) at once. Next, `torchrun` runs the python code `tutorials/print_hostinfo.py`: 
 
 ```bash
-mpiexec -n $nnodes --cpu-bind none \
-    torchrun --nnodes=$nnodes --nproc-per-node=auto \
-    --rdzv-backend=c10d --rdzv-endpoint=$head_node_ip tutorials/print_hostinfo.py
+mpiexec -n $nranks --ppn $gpus_per_node tutorials/print_hostinfo.py
 ```
 
 In the above line:
 
-- `$nnodes` is the number of nodes.
+- `$nranks` is the number of ranks.
 - `cpu-bind none` is used to avoid binding the CPU to the GPU, which would hurt the GPU performance. 
 - `--nproc-per-node=auto` is used to automatically detect the number of GPUs per node with the help of `torchrun`. The user can either specify the number of GPUs per node or let `torchrun` detect it automatically from the environment variables.
 
@@ -115,8 +172,25 @@ In the above line:
 - `--rdzv-endpoint=$head_node_ip` is used to specify the IP of the head node.
 
 
+**Key insight: Use --ppn 1 (one MPI rank per node), not one per GPU. torchrun handles GPU spawning.**
 
-With the advancement in CUDA applications and GPU clusters, libraries like NCCL (NVIDIA Collective Communication Library) provide faster inter-GPU communication primitives that are topology-aware, leveraging technologies such as RDMA via RoCE or InfiniBand. NCCL integrates easily into MPI applications, with MPI serving as the frontend for launching the parallel job and NCCL as the backend for heavy communication.
+### Alternative: Direct MPI Launch (No `torchrun`)
+
+For simpler scripts or when using MPI backend directly, you can directly invoke `mpiexec` to launch your training script without `torchrun`.
+
+```bash
+# Set environment variables for torch.distributed
+export MASTER_ADDR=$head_node_ip
+export MASTER_PORT=29500
+
+# Launch with MPI (1 rank per GPU)
+mpiexec -n 8 --ppn 4 --cpu-bind none python train.py --backend nccl
+```
+
+
+On Derecho, NCCL is recommended for GPU training. For optimal performance with the Slingshot interconnect, use a build with the AWS OFI NCCL plugin (see build instructions in the https://github.com/benkirk/derecho-pytorch-mpi repository).
+
+
 
 
 ## Example Workflows

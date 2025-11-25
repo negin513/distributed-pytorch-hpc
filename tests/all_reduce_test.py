@@ -171,3 +171,4 @@ if __name__ == "__main__":
 
     print (tensor_sizes)
     init_processes(backend=args.backend, tensor_sizes=tensor_sizes)
+    dist.destroy_process_group()

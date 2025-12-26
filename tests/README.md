@@ -1,12 +1,26 @@
-This directory includes a bunch of tests to check nccl vs. gloo performance.
+# Tests - Environment Verification & Testing
+
+This directory contains scripts to verify your environment is correctly configured and to benchmark communication performance on Derecho.
+
+> **Run these tests before starting any distributed training** to catch configuration issues early.
 
 ```
-tests/
-├── README.md
-├── send_recv_test.py
-├── allreduce_test.py
-├── pbs_run_tests.sh
+  tests/
+  ├── README.md                  
+  ├── print_hostinfo.py          # Simple script to print hostnames of allocated nodes (for debugging)
+  ├── send_recv_test.py          # Point-to-point communication test (send/recv operations)
+  ├── all_reduce_test.py         # Collective communication tests (broadcast and allreduce)
+  ├── torch_comm_bench.py        # Main comprehensive benchmark tool
+  ├── check_environment.py       # Comprehensive environment check for distributed PyTorch
+  ├── pbs_run_tests.sh           # PBS batch script to run tests on HPC cluster (Derecho)
+  └── results/                   # Directory containing benchmark outputs
+      ├── benchmark_results.log
+      ├── benchmark_results_allreduce.csv
+      └── benchmark_results_broadcast.csv
+
 ```
+
+
 
 `pbs_run_tests.sh` is a script that runs the tests on Derecho. 
 

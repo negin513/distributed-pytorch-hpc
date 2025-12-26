@@ -220,6 +220,45 @@ def print_section(title):
     print(f" {title}")
     print('─' * 70)
 
+def gather_gpu_info(world_rank, world_size, local_rank):
+    """Gather GPU information from all ranks."""
+    hostname = socket.gethostname()
+    
+    # Collect local GPU info
+    local_gpu_info = []
+    if torch.cuda.is_available():
+        for i in range(torch.cuda.device_count()):
+            props = torch.cuda.get_device_properties(i)
+            local_gpu_info.append({
+                'hostname': hostname,
+                'local_id': i,
+                'name': props.name,
+                'memory_gb': props.total_memory / (1024**3),
+                'sm': f"{props.major}.{props.minor}",
+            })
+    
+    if not dist.is_initialized():
+        return local_gpu_info
+    
+    # Gather from all ranks
+    all_gpu_info = [None] * world_size
+    dist.all_gather_object(all_gpu_info, local_gpu_info)
+    
+    # Deduplicate (each node reports same GPUs from multiple ranks)
+    seen = set()
+    unique_gpu_info = []
+    for rank_info in all_gpu_info:
+        for gpu in rank_info:
+            key = (gpu['hostname'], gpu['local_id'])
+            if key not in seen:
+                seen.add(key)
+                unique_gpu_info.append(gpu)
+    
+    # Sort by hostname, then local_id
+    unique_gpu_info.sort(key=lambda x: (x['hostname'], x['local_id']))
+    
+    return unique_gpu_info
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Main
@@ -236,6 +275,7 @@ def main():
     
     # Gather info from all ranks
     gpus_per_node = torch.cuda.device_count()
+    all_gpu_info = gather_gpu_info(world_rank, world_size, local_rank)
     
     if is_distributed:
         hostnames = gather_hostnames(world_rank, world_size)
@@ -256,7 +296,7 @@ def main():
             cleanup_distributed()
         return
     
-    print_header("DISTRIBUTED PyTorch ENVIRONMENT CHECK")
+    print_header("Distributed PyTorch Environment Check")
     
     # ─────────────────────────────────────────────────────────────────
     # Distributed Configuration (consolidated)
@@ -300,25 +340,71 @@ def main():
     print(f"  Library          : {get_nccl_library_path()}")
     
     # Only show NCCL env vars that are set
-    nccl_env_vars = ['NCCL_SOCKET_IFNAME', 'NCCL_IB_DISABLE', 'NCCL_NET_GDR_LEVEL', 
-                     'NCCL_CROSS_NIC', 'NCCL_TIMEOUT', 'NCCL_DEBUG']
+    # Check all NCCL environment variables, only show ones that are set
+    nccl_env_vars = [
+        # Debugging
+        'NCCL_DEBUG',
+        'NCCL_DEBUG_FILE',
+        'NCCL_DEBUG_SUBSYS',
+        # Network
+        'NCCL_SOCKET_IFNAME',
+        'NCCL_IB_DISABLE',
+        'NCCL_IB_HCA',
+        'NCCL_IB_TIMEOUT',
+        'NCCL_IB_RETRY_CNT',
+        'NCCL_NET_GDR_LEVEL',
+        'NCCL_NET_PLUGIN',
+        'NCCL_CROSS_NIC',
+        # P2P / Shared Memory
+        'NCCL_P2P_LEVEL',
+        'NCCL_P2P_DISABLE',
+        'NCCL_SHM_DISABLE',
+        # Performance tuning
+        'NCCL_BUFFSIZE',
+        'NCCL_NTHREADS',
+        'NCCL_MAX_NCHANNELS',
+        'NCCL_MIN_NCHANNELS',
+        'NCCL_ALGO',
+        'NCCL_PROTO',
+        # Timeouts
+        'NCCL_TIMEOUT',
+        'NCCL_BLOCKING_WAIT',
+        'NCCL_ASYNC_ERROR_HANDLING',
+        # Other
+        'NCCL_COLLNET_ENABLE',
+        'NCCL_TOPO_DUMP_FILE',
+        'NCCL_GRAPH_DUMP_FILE',
+    ]
     set_vars = {var: os.environ.get(var) for var in nccl_env_vars if os.environ.get(var)}
     if set_vars:
         print(f"  Environment:")
         for var, value in set_vars.items():
             print(f"    {var}: {value}")
-    
+
     # ─────────────────────────────────────────────────────────────────
-    # GPU Information
+    # PyTorch Build Info (condensed)
+    # ─────────────────────────────────────────────────────────────────
+    print_section("PyTorch Build")
+    print(torch.__config__.show())
+
+
+    #─────────────────────────────────────────────────────────────────
+    # GPU Information (all nodes)
     # ─────────────────────────────────────────────────────────────────
     print_section("GPUs")
-    if torch.cuda.device_count() == 0:
+    if not all_gpu_info:
         print("  No GPUs detected")
     else:
-        for i in range(torch.cuda.device_count()):
-            props = torch.cuda.get_device_properties(i)
-            mem_gb = props.total_memory / (1024**3)
-            print(f"  [{i}] {props.name} | {mem_gb:.0f} GB | SM {props.major}.{props.minor}")
+        current_host = None
+        for gpu in all_gpu_info:
+            if gpu['hostname'] != current_host:
+                current_host = gpu['hostname']
+                if num_nodes > 1:
+                    print(f"\n  {current_host}:")
+            
+            prefix = "    " if num_nodes > 1 else "  "
+            print(f"{prefix}[{gpu['local_id']}] {gpu['name']} | {gpu['memory_gb']:.0f} GB | SM {gpu['sm']}")
+  
     
     # ─────────────────────────────────────────────────────────────────
     # Network Interfaces
@@ -335,11 +421,7 @@ def main():
     except Exception as e:
         print(f"  Could not check: {e}")
     
-    # ─────────────────────────────────────────────────────────────────
-    # PyTorch Build Info (condensed)
-    # ─────────────────────────────────────────────────────────────────
-    print_section("PyTorch Build")
-    print(torch.__config__.show())
+
     
     # ─────────────────────────────────────────────────────────────────
     # Summary

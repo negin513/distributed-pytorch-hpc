@@ -5,14 +5,53 @@ distributed send/receive operation.
 
 import os
 import argparse
-
+import socket 
 import torch
 import torch.distributed as dist
 
-# Environment variables set by torch.distributed.launch
-LOCAL_RANK = int(os.environ["LOCAL_RANK"])
-WORLD_SIZE = int(os.environ["WORLD_SIZE"])
-WORLD_RANK = int(os.environ["RANK"])
+try: 
+    from mpi4py import MPI
+    comm = MPI.COMM_WORLD
+    shmem_comm = comm.Split_type(MPI.COMM_TYPE_SHARED)
+    
+    LOCAL_RANK = shmem_comm.Get_rank()
+    WORLD_SIZE = comm.Get_size()
+    WORLD_RANK = comm.Get_rank()
+
+    os.environ['MASTER_ADDR'] = comm.bcast( socket.gethostbyname( socket.gethostname() ), root=0 )
+    os.environ['MASTER_PORT'] =	'1234'
+
+except:
+    if "LOCAL_RANK" in os.environ:
+        # Environment variables set by torch.distributed.launch or torchrun
+        LOCAL_RANK = int(os.environ["LOCAL_RANK"])
+        WORLD_SIZE = int(os.environ["WORLD_SIZE"])
+        WORLD_RANK = int(os.environ["RANK"])
+    elif "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ:
+        # Environment variables set by mpirun
+        LOCAL_RANK = int(os.environ["OMPI_COMM_WORLD_LOCAL_RANK"])
+        WORLD_SIZE = int(os.environ["OMPI_COMM_WORLD_SIZE"])
+        WORLD_RANK = int(os.environ["OMPI_COMM_WORLD_RANK"])
+    elif "PMI_RANK" in os.environ:
+        # Environment variables set by cray-mpich
+        LOCAL_RANK = int(os.environ["PMI_LOCAL_RANK"])
+        WORLD_SIZE = int(os.environ["PMI_SIZE"])
+        WORLD_RANK = int(os.environ["PMI_RANK"])
+    else:
+        import sys
+        sys.exit("Can't find the evironment variables for local rank")
+
+print (LOCAL_RANK, WORLD_SIZE, WORLD_RANK) 
+
+if WORLD_RANK == 0:
+    print("----------------------")
+    print("WORLD_SIZE  : ", WORLD_SIZE)
+    print("cuda device : ", torch.cuda.device_count())
+    print("pytorch version : ", torch.__version__)
+    print("nccl version : ", torch.cuda.nccl.version())
+    print("torch config : ", torch.__config__.show())
+    print(torch.__config__.parallel_info())
+    print("----------------------")
 
 
 def run(backend):

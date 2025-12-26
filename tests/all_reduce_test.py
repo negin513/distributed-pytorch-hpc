@@ -1,3 +1,7 @@
+"""
+mpiexec -n 8 --ppn 4 --cpu-bind none python all_reduce_test.py 
+"""
+
 import os
 import time
 import argparse

@@ -1,21 +1,43 @@
 #!/usr/bin/env python3
-# example of multinode multi-gpu training
-# code adapted from LambdaLabsML
+"""
+Multi-Node, Multi-GPU Distributed Data Parallel (DDP) Training Template.
+
+This script demonstrates a minimal PyTorch Distributed Data Parallel (DDP)
+training setup using synthetic data.
+
+Components:
+- Model: Simple neural network (single Linear layer: 20 inputs → 1 output)
+- Data: Synthetic / dummy dataset (2,000 randomly generated samples)
+
+Workflow:
+    1. Initialize the distributed process group (NCCL backend).
+    2. Create and wrap the model with PyTorch DistributedDataParallel (DDP).
+    3. Partition the dataset using DistributedSampler so each GPU processes
+       a unique subset of data.
+    4. Perform synchronized gradient updates across all ranks during the
+       backward pass.
+
+Usage:
+
+    # Run locally on a single node with 4 GPUs:
+    torchrun --nproc_per_node=4 multinode_ddp_basics.py --total_epochs 10
+
+    # Run on multiple nodes (e.g., 2 nodes with 4 GPUs each):
+    mpiexec -n 8 --ppn 4 --cpu-bind none python multinode_ddp_basics.py
+"""
+import os
+import socket
+import time
+import argparse
 
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
-
-import torch.multiprocessing as mp
 from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
-import os
-import socket
-import torch
-import time  # Import time module for timing
 
-
+# --- Distributed Environment Discovery ---
 try: 
     from mpi4py import MPI
     comm = MPI.COMM_WORLD
@@ -25,8 +47,10 @@ try:
     WORLD_SIZE = comm.Get_size()
     WORLD_RANK = comm.Get_rank()
 
-    os.environ['MASTER_ADDR'] = comm.bcast( socket.gethostbyname( socket.gethostname() ), root=0 )
-    os.environ['MASTER_PORT'] =	'1234'
+    if "MASTER_ADDR" not in os.environ:
+        os.environ['MASTER_ADDR'] = comm.bcast( socket.gethostbyname( socket.gethostname() ), root=0 )
+    if "MASTER_PORT" not in os.environ:
+        os.environ['MASTER_PORT'] =	'1234'
 except:
 
     print ("here!")
@@ -42,8 +66,11 @@ except:
         WORLD_RANK = int(os.environ["OMPI_COMM_WORLD_RANK"])
     else:
         print ("Error: No environment variables set for distributed training")
-    #os.environ['MASTER_ADDR'] = comm.bcast( socket.gethostbyname( socket.gethostname() ), root=0 )
-    os.environ['MASTER_PORT'] =	'1234'
+
+    if "MASTER_ADDR" not in os.environ: 
+        os.environ['MASTER_ADDR'] = socket.gethostbyname( socket.gethostname() ) 
+    if "MASTER_PORT" not in os.environ:
+        os.environ['MASTER_PORT'] =	'1234'
 
 if WORLD_RANK==0:
     print ('----------------------')
@@ -56,6 +83,12 @@ if WORLD_RANK==0:
     print ('----------------------')   
 
 class MyTrainDataset(Dataset):
+    """
+    A synthetic dataset for demonstrating distributed data loading.
+    
+    Args:
+        size (int): Total number of samples in the synthetic dataset.
+    """
     def __init__(self, size):
         self.size = size
         self.data = [(torch.rand(20), torch.rand(1)) for _ in range(size)]
@@ -67,9 +100,22 @@ class MyTrainDataset(Dataset):
         return self.data[index]
 
 def ddp_setup(backend):
+    """Initializes the PyTorch distributed process group."""
+    torch.cuda.set_device(LOCAL_RANK)
     init_process_group(backend=backend, rank=WORLD_RANK, world_size=WORLD_SIZE)
 
 class Trainer:
+    """
+    Handles the distributed training lifecycle including setup, 
+    checkpointing, and performance logging.
+
+    Attributes:
+        model (nn.Module): The model to be trained.
+        train_data (DataLoader): Distributed DataLoader instance.
+        optimizer (Optimizer): Optimization algorithm.
+        save_every (int): Frequency (in epochs) to save snapshots.
+        snapshot_path (str): Path to the .pt checkpoint file.
+    """
     def __init__(
         self,
         model: torch.nn.Module,
@@ -103,7 +149,7 @@ class Trainer:
     def _run_batch(self, source, targets):
         self.optimizer.zero_grad()
         output = self.model(source)
-        loss = F.cross_entropy(output, targets)
+        loss = F.mse_loss(output, targets)
         loss.backward()
         self.optimizer.step()
 
@@ -156,26 +202,41 @@ def load_train_objs():
     return train_set, model, optimizer
 
 def prepare_dataloader(dataset: Dataset, batch_size: int):
+    """
+    Wraps a dataset in a DataLoader with a DistributedSampler.
+    
+    Args:
+        dataset (Dataset): The source dataset.
+        batch_size (int): Number of samples per GPU.
+    """
     return DataLoader(
         dataset,
         batch_size=batch_size,
         pin_memory=True,
-        shuffle=False,
+        shuffle=False, # disable shuffle when using DistributedSampler
         sampler=DistributedSampler(dataset)
     )
 
-def main(save_every: int, total_epochs: int, batch_size: int, snapshot_path: str = "snapshot.pt", backend: str = "nccl"):
-    ddp_setup(backend)
+def main(args):
+
+    # 1. step 1: setup ddp
+    ddp_setup(args.backend)
+    if WORLD_RANK==0:
+        print (f"Training on {WORLD_SIZE} GPUs")
+
+    # 2. step 2: load training objects
     dataset, model, optimizer = load_train_objs()
-    train_data = prepare_dataloader(dataset, batch_size)
-    trainer = Trainer(model, train_data, optimizer, save_every, snapshot_path)
-    print (snapshot_path)
-    trainer.train(total_epochs)
+    train_data = prepare_dataloader(dataset, args.batch_size)
+    trainer = Trainer(model, train_data, optimizer, args.save_every, 'snapshot.pt')
+
+    # 3. step 3: run training
+    trainer.train(args.total_epochs)
+
+    # 4. step 4: cleanup
     destroy_process_group()
 
 if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description='simple distributed training job')
+    parser = argparse.ArgumentParser(description='Simple Distributed Training Example')
     
     num_epochs_default = 50
     batch_size_default = 32
@@ -193,7 +254,7 @@ if __name__ == "__main__":
     parser.add_argument('--save_every',
         type=int,
         help='How often to save a snapshot',
-        default=10,
+        default=100,
         dest='save_every')
 
     parser.add_argument('--batch_size', 
@@ -203,4 +264,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     
-    main(args.save_every, args.total_epochs, args.batch_size, 'snapshot.pt', args.backend)
+    main(args)

@@ -14,7 +14,7 @@
 # Load modules
 module reset
 module load conda
-conda activate /glade/work/schreck/conda-envs/holodec
+conda activate /glade/work/benkirk/conda-envs/credit-derecho-torch28-nccl221/
 
 which torchrun
 which mpiexec

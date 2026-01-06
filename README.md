@@ -1,11 +1,30 @@
 # Multi-Node Multi-GPU PyTorch Training on NCAR's Derecho
 
-This repostory contains example workflows with for executing multi-node, multi-GPU machine learning training using PyTorch on NCAR's HPC Supercomputers (i.e. Derecho). This repository also includes test scripts for testing performance of nccl with example PBS scripts of running them.
+[![Under Development](https://img.shields.io/badge/status-under%20development-yellow)](https://github.com/NCAR/multi-node-pytorch-derecho)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Derecho](https://img.shields.io/badge/HPC-Derecho-green)](https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/)
 
-While this code is written to run directly on [Derecho](https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/) GPU nodes, it can be adapted for other GPU HPC machines. 
-Each [Derecho](https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/) node has 4 NVIDIA A100 GPUs. The examples in this repository demonstrate how to train a model on multiple GPUs across multiple nodes using `torch.distribtued` and `torchrun`.
+**Developed by:** [Negin Sobhani](https://github.com/negin513) | CISL, NSF-NCAR
+
+> **🚧 Under Active Development** — Contributions and feedback welcome!
+
+## Overview
+This repository provides **production-ready examples and templates** for distributed PyTorch training on NCAR's [Derecho supercomputer](https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/). While this code is written to run on [Derecho](https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/) GPU nodes, it can be adapted for other HPC machines. 
 
 The goal of this repository is to provide a starting point for researchers who want to scale their PyTorch training to multiple GPUs and nodes on NCAR's HPC systems.
+
+## Derecho GPU Resources
+
+| Component | Specification |
+|-----------|---------------|
+| **GPU Nodes** | 82 nodes |
+| **GPUs per Node** | 4× NVIDIA A100 (40 GB) |
+| **CPU per Node** | AMD EPYC 7763 Milan (64 cores) |
+| **System Memory** | 512 GB DDR4 |
+| **Interconnect** | HPE Slingshot |
+| **Scheduler** | PBS Pro |
+
+**Peak Capability:** 82 nodes × 4 GPUs = **328 A100 GPUs** available for distributed training.
 
 
 ## Contents
@@ -18,16 +37,51 @@ In this repository, you will find the following:
 - `environment.yml` : This file contains the conda environment for running the example workflows.
 
 
-## How to Make the Environment:
+## Quick Start
 
-To create the conda environment, you can use the following command:
-
+### 1. Clone and Setup Environment
 ```bash
+# Clone repository
+git clone https://github.com/NCAR/multi-node-pytorch-derecho.git
+cd multi-node-pytorch-derecho
+
+# Load modules and create environment
 module load conda
-CONDA_OVERRIDE_CUDA=12.1 mamba env create -f environment.yml
-conda activate pytorch_cuda_env
+conda env create -f environment.yml
+conda activate pytorch-dist
 ```
 
+### 2. Configure Your Project Code
+```bash
+# Replace with your NCAR project code
+export PROJECT_CODE="XXXXXXXX"
+
+# Update PBS scripts
+sed -i "s//${PROJECT_CODE}/g" scripts/*.pbs
+sed -i "s//${PROJECT_CODE}/g" examples/*/*.pbs
+```
+
+### 3. Run Your First Distributed Job
+```bash
+# Start with single-node multi-GPU (4 GPUs)
+cd examples/01_data_parallel_ddp
+qsub submit_single_node.pbs
+
+# Monitor your job
+qstat -u $USER
+watch -n 5 qstat -u $USER
+
+# Check output
+tail -f *.log
+```
+
+### 4. Scale to Multiple Nodes
+```bash
+# Once single-node works, scale to 2 nodes (8 GPUs)
+qsub submit_multi_node.pbs
+```
+
+---
 
 ## What is DDP?
 
@@ -145,3 +199,8 @@ qsub scripts/torchrun_multigpu_fsdp.sh
 ## Resources
 
 - [Multi node PyTorch Distributed Training Guide For People In A Hurry](https://lambdalabs.com/blog/multi-node-pytorch-distributed-training-guide#distributed-pytorch-underthehood)
+---
+
+<p align="center">
+  <i>Questions? Open an issue or contact <a href="https://github.com/negin513">@negin513</a></i>
+</p>

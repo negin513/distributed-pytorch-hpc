@@ -19,8 +19,6 @@ The goal of this repository is to provide a starting point for researchers who w
 |-----------|---------------|
 | **GPU Nodes** | 82 nodes |
 | **GPUs per Node** | 4× NVIDIA A100 (40 GB) |
-| **CPU per Node** | AMD EPYC 7763 Milan (64 cores) |
-| **System Memory** | 512 GB DDR4 |
 | **Interconnect** | HPE Slingshot |
 | **Scheduler** | PBS Pro |
 
@@ -31,8 +29,8 @@ The goal of this repository is to provide a starting point for researchers who w
 
 In this repository, you will find the following:
 
+- [`scripts/`](scripts/README.md): This directory contains example PBS scripts for training multi-node, multi-GPU neural network on Derecho using PyTorch's parallelization strategies. It includes timing and stats summary useful for performance analysis.
 - [`test/`](tests/README.md): This directory contains test scripts for testing performance of nccl with example PBS scripts of running them.  
-- [`scripts/`](scripts/README.md): This directory contains example PBS scripts for training multi-node, multi-GPU neural network on Derecho using PyTorch's DDP. It includes timing and stats summary useful for performance analysis.
 - `tutorials/`: This directory contains simple scripts for testing torch and nccl installation on Derecho with example PBS scripts of running them and explaining the arguments.
 - `environment.yml` : This file contains the conda environment for running the example workflows.
 
@@ -42,8 +40,8 @@ In this repository, you will find the following:
 ### 1. Clone and Setup Environment
 ```bash
 # Clone repository
-git clone https://github.com/NCAR/multi-node-pytorch-derecho.git
-cd multi-node-pytorch-derecho
+git clone https://github.com/NCAR/distributed-pytorch-hpc
+cd distributed-pytorch-hpc
 
 # Load modules and create environment
 module load conda
@@ -58,7 +56,6 @@ export PROJECT_CODE="XXXXXXXX"
 
 # Update PBS scripts
 sed -i "s//${PROJECT_CODE}/g" scripts/*.pbs
-sed -i "s//${PROJECT_CODE}/g" examples/*/*.pbs
 ```
 
 ### 3. Run Your First Distributed Job

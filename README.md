@@ -1,6 +1,5 @@
 # Multi-Node Multi-GPU PyTorch Training on NCAR's Derecho
 
-[![Under Development](https://img.shields.io/badge/status-under%20development-yellow)](https://github.com/NCAR/multi-node-pytorch-derecho)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Derecho](https://img.shields.io/badge/HPC-Derecho-green)](https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/)
 

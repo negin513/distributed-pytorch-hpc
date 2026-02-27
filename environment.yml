@@ -1,14 +1,13 @@
-name: pytorch_cuda_env
+name: pytorch-derecho
 channels:
-  - pytorch
-  - nvidia
+  - file:///glade/work/benkirk/consulting/conda-recipes/output
+  - conda-forge/label/mpi-external
   - conda-forge
 dependencies:
-  - python=3.11.*
-  - libblas=*=*mkl
-  - numpy<1.24
-  - xarray
-  - pandas
-  - pytorch=2.1.2
-  - torchvision=0.16.2
-  - pytorch-cuda=12.1
+  - python=3.11
+  - mpi4py =*=derecho*
+  - pip
+  - pytorch ==2.8.0=derecho*2000
+  - torchvision =*=derecho*
+  - pyyaml
+  - numpy

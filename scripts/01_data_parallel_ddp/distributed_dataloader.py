@@ -1,66 +1,26 @@
 #!/usr/bin/env python
 """
-Example code demonstrating DistributedSampler and DataLoader usage
-with MPI setup from scripts/main.py
+Example code demonstrating DistributedSampler and DataLoader usage.
+
+Usage:
+    mpiexec -n 4 --ppn 4 --cpu-bind none python distributed_dataloader.py
+    torchrun --standalone --nproc_per_node=4 distributed_dataloader.py
 """
+
+import os
+import sys
+import argparse
+
+# Add repo root to path so `from utils...` works
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
-import torch.distributed as dist
 
-import os
-import socket
-import numpy as np
-import argparse
-
-
-# MPI Setup - same as scripts/main.py
-try:
-    from mpi4py import MPI
-    comm = MPI.COMM_WORLD
-    shmem_comm = comm.Split_type(MPI.COMM_TYPE_SHARED)
-
-    LOCAL_RANK = shmem_comm.Get_rank()
-    WORLD_SIZE = comm.Get_size()
-    WORLD_RANK = comm.Get_rank()
-
-except:
-    if "LOCAL_RANK" in os.environ:
-        # Environment variables set by torch.distributed.launch or torchrun
-        LOCAL_RANK = int(os.environ["LOCAL_RANK"])
-        WORLD_SIZE = int(os.environ["WORLD_SIZE"])
-        WORLD_RANK = int(os.environ["RANK"])
-    elif "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ:
-        # Environment variables set by mpirun
-        LOCAL_RANK = int(os.environ["OMPI_COMM_WORLD_LOCAL_RANK"])
-        WORLD_SIZE = int(os.environ["OMPI_COMM_WORLD_SIZE"])
-        WORLD_RANK = int(os.environ["OMPI_COMM_WORLD_RANK"])
-    elif "PMI_RANK" in os.environ:
-        # Environment variables set by cray-mpich
-        LOCAL_RANK = int(os.environ["PMI_LOCAL_RANK"])
-        WORLD_SIZE = int(os.environ["PMI_SIZE"])
-        WORLD_RANK = int(os.environ["PMI_RANK"])
-    else:
-        import sys
-        sys.exit("Can't find the evironment variables for local rank")
-
-if "MASTER_ADDR" not in os.environ:
-    os.environ['MASTER_ADDR'] = comm.bcast(socket.gethostbyname(socket.gethostname()), root=0)
-if "MASTER_PORT" not in os.environ:
-    os.environ['MASTER_PORT'] = str(np.random.randint(1000, 8000))
-
-
-if WORLD_RANK == 0:
-    print('----------------------')
-    print('LOCAL_RANK  : ', LOCAL_RANK)
-    print('WORLD_SIZE  : ', WORLD_SIZE)
-    print('WORLD_RANK  : ', WORLD_RANK)
-    print("cuda device : ", torch.cuda.device_count())
-    print("pytorch version : ", torch.__version__)
-    print('----------------------')
+from utils.distributed import init_distributed, cleanup_distributed
 
 
 # Custom Dataset
@@ -98,7 +58,6 @@ class SimpleModel(nn.Module):
 
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--local_rank", type=int, help="Local rank")
     parser.add_argument("--num_epochs", type=int, default=5, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=32, help="Training batch size per process")
     parser.add_argument("--backend", type=str, default="nccl", choices=["nccl", "gloo", "mpi"])
@@ -109,19 +68,13 @@ def main():
 
     num_epochs = argv.num_epochs
     batch_size = argv.batch_size
-    backend = argv.backend
     dataset_size = argv.dataset_size
     input_dim = argv.input_dim
 
-    # Initialize distributed backend - same as scripts/main.py
-    torch.distributed.init_process_group(
-        backend=backend,
-        rank=WORLD_RANK,
-        world_size=WORLD_SIZE
-    )
-    torch.cuda.set_device(LOCAL_RANK)
+    # Initialize distributed (handles all launchers automatically)
+    WORLD_RANK, WORLD_SIZE, LOCAL_RANK = init_distributed(backend=argv.backend)
 
-    device = torch.device("cuda:{}".format(LOCAL_RANK))
+    device = torch.device(f"cuda:{LOCAL_RANK}")
     print(f"device: {device}, world_rank: {WORLD_RANK}, local_rank: {LOCAL_RANK}")
 
     # Create dataset
@@ -203,6 +156,8 @@ def main():
 
     if WORLD_RANK == 0:
         print("Training completed successfully!")
+
+    cleanup_distributed()
 
 
 if __name__ == "__main__":

@@ -174,3 +174,21 @@ cython_debug/
 #.idea/
 
 data/
+
+# PBS job output files
+*.o[0-9]*
+*.e[0-9]*
+
+# Nested data directories (CIFAR-10 downloads, etc.)
+scripts/data/
+scripts/*/data/
+
+# Results directories
+**/results/
+
+# Profiler output
+profiler_output/
+**/profiler_output/
+
+# Snapshots from training
+snapshot.pt

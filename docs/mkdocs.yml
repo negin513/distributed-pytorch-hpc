@@ -1,0 +1,64 @@
+site_name: Distributed PyTorch on HPC
+site_description: Multi-node, multi-GPU PyTorch distributed training on NCAR's Derecho
+site_url: https://ncar.github.io/distributed-pytorch-hpc/
+repo_url: https://github.com/NCAR/distributed-pytorch-hpc
+repo_name: NCAR/distributed-pytorch-hpc
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - content.code.copy
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Guide:
+    - Overview: guide/README.md
+    - 1. Single-GPU Baseline: guide/01_single_gpu_baseline.md
+    - 2. Why Distributed?: guide/02_why_distributed.md
+    - 3. Communication Primitives: guide/03_communication_primitives.md
+    - 4. Data Parallel (DDP): guide/04_data_parallel_ddp.md
+    - 5. Fully Sharded (FSDP): guide/05_fully_sharded_fsdp.md
+    - 6. Tensor Parallel: guide/06_tensor_parallel.md
+    - 7. Pipeline Parallel: guide/07_pipeline_parallel.md
+    - 8. Sequence Parallel: guide/08_sequence_parallel.md
+    - 9. Hybrid Parallelism: guide/09_hybrid_parallelism.md
+    - 10. Domain Parallel: guide/10_domain_parallel.md
+    - 11. Choosing a Strategy: guide/11_choosing_a_strategy.md
+    - 12. HPC Operations: guide/12_hpc_operations.md
+  - Reference:
+    - Derecho Guide: guide/derecho_guide.md
+    - NCCL Tuning: guide/nccl_tuning.md
+    - Strategy Decision Guide: guide/strategy_decision_guide.md
+    - Troubleshooting: guide/troubleshooting.md

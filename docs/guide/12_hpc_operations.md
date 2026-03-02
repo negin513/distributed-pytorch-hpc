@@ -192,7 +192,7 @@ export FI_MR_CACHE_MONITOR=userfaultfd
 ```
 
 For the full NCCL reference including OFI transport and advanced tuning,
-see [`docs/nccl_tuning.md`](../nccl_tuning.md).
+see [`nccl_tuning.md`](nccl_tuning.md).
 
 ## Debugging Distributed Jobs
 
@@ -317,9 +317,9 @@ follow this pattern.
 ---
 
 **Deep-dive references:**
-- [`docs/derecho_guide.md`](../derecho_guide.md) — full hardware specs, PBS reference, launch patterns
-- [`docs/nccl_tuning.md`](../nccl_tuning.md) — OFI transport, advanced NCCL settings
-- [`docs/troubleshooting.md`](../troubleshooting.md) — comprehensive error catalog with solutions
+- [`derecho_guide.md`](derecho_guide.md) — full hardware specs, PBS reference, launch patterns
+- [`nccl_tuning.md`](nccl_tuning.md) — OFI transport, advanced NCCL settings
+- [`troubleshooting.md`](troubleshooting.md) — comprehensive error catalog with solutions
 
 ---
 

@@ -193,7 +193,8 @@ source /etc/profile.d/modules.sh  # or wherever modules.sh lives
 module purge
 module load nvhpc cuda cray-mpich conda
 ```
-Or use `scripts/pbs_common.sh` which handles this.
+Every PBS script in `scripts/` already includes these module loads — copy
+any one as a starting template.
 
 ### Wrong Conda Environment
 

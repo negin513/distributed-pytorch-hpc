@@ -9,14 +9,14 @@ While this code is written to run directly on [Derecho](https://ncar-hpc-docs.re
 
 ## Getting Started
 
-New to distributed training? Start with the [guide](guide/README.md) — it takes you from a single-GPU training loop to every major distributed strategy.
+New to distributed training? Start with the [guide](guide/01_single_gpu_baseline.md) — it takes you from a single-GPU training loop to every major distributed strategy.
 
 Already know what you need?
 
-- **[Strategy Decision Guide](strategy_decision_guide.md)** — quick-reference flowchart
-- **[Derecho Guide](derecho_guide.md)** — hardware specs and PBS reference
-- **[NCCL Tuning](nccl_tuning.md)** — network configuration deep dive
-- **[Troubleshooting](troubleshooting.md)** — common errors and solutions
+- **[Strategy Decision Guide](guide/strategy_decision_guide.md)** — quick-reference flowchart
+- **[Derecho Guide](guide/derecho_guide.md)** — hardware specs and PBS reference
+- **[NCCL Tuning](guide/nccl_tuning.md)** — network configuration deep dive
+- **[Troubleshooting](guide/troubleshooting.md)** — common errors and solutions
 
 ## Quick Start
 

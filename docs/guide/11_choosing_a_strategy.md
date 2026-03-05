@@ -159,4 +159,4 @@ NCCL tuning, and debugging on Derecho.
 
 ---
 
-**See also:** [Strategy Decision Guide](../strategy_decision_guide.md) — the quick-reference version of this chapter.
+**See also:** [Strategy Decision Guide](strategy_decision_guide.md) — the quick-reference version of this chapter.

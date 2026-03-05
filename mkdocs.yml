@@ -1,8 +1,13 @@
+docs_dir: .
+site_dir: ../site
 site_name: Distributed PyTorch on HPC
 site_description: Multi-node, multi-GPU PyTorch distributed training on NCAR's Derecho
 site_url: https://ncar.github.io/distributed-pytorch-hpc/
 repo_url: https://github.com/NCAR/distributed-pytorch-hpc
 repo_name: NCAR/distributed-pytorch-hpc
+
+extra_css:
+  - stylesheets/extra.css
 
 theme:
   name: material
@@ -44,7 +49,6 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Guide:
-    - Overview: guide/README.md
     - 1. Single-GPU Baseline: guide/01_single_gpu_baseline.md
     - 2. Why Distributed?: guide/02_why_distributed.md
     - 3. Communication Primitives: guide/03_communication_primitives.md

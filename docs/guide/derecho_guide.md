@@ -129,14 +129,10 @@ torchrun --standalone --nproc_per_node=4 train.py
 mpiexec -n $((NNODES * 4)) --ppn 4 --cpu-bind none python train.py
 ```
 
-### Using pbs_common.sh (Simplest)
-
-```bash
-source scripts/pbs_common.sh
-launch_distributed train.py --epochs 10
-```
-
-This handles single vs multi-node automatically.
+Each PBS script in `scripts/` is a self-contained template with all
+required modules, NCCL config, and node discovery inlined — copy any
+`.sh` file and adjust the `#PBS` directives and `python` command for
+your job.
 
 ## Common Environment Variables
 

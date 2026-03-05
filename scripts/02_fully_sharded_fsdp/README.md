@@ -186,31 +186,13 @@ Submit to the Derecho job scheduler:
 qsub run_fsdp.sh
 ```
 
-The job script sources `pbs_common.sh` which handles module loading, conda
-activation, NCCL configuration for Slingshot, and node discovery. For
+The job script `run_fsdp.sh` is a self-contained template with module
+loading, conda activation, NCCL configuration for Slingshot, and node
+discovery all inlined — copy it and adjust for your own job. For
 multi-node runs, change the `select` line:
 
 ```bash
 #PBS -l select=2:ncpus=64:ngpus=4:mem=480GB
-```
-
-Example PBS script (`run_fsdp.sh`):
-
-```bash
-#!/bin/bash
-#PBS -A SCSG0001
-#PBS -N fsdp_training
-#PBS -l walltime=00:30:00
-#PBS -l select=1:ncpus=64:ngpus=4:mem=480GB
-#PBS -q main
-#PBS -j oe
-
-source "$(dirname "${BASH_SOURCE[0]}")/../pbs_common.sh"
-
-TOTAL_PROCS=$((NNODES * GPUS_PER_NODE))
-
-mpiexec -n $TOTAL_PROCS --ppn $GPUS_PER_NODE --cpu-bind none \
-    python resnet_fsdp_training.py --epochs 10
 ```
 
 ## When to Use FSDP vs DDP

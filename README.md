@@ -1,47 +1,31 @@
-# Distributed PyTorch Training on NCAR's Derecho
+# Multi-Node PyTorch Distributed Training on NCAR's Derecho
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Derecho](https://img.shields.io/badge/HPC-Derecho-green)](https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/)
 
-**Developed by:** [Negin Sobhani](https://github.com/negin513) | CISL, NSF-NCAR
-
 ## Overview
 
-This repository provides production-ready examples and templates for distributed PyTorch training on NCAR's [Derecho](https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/) supercomputer (82 nodes x 4 A100 GPUs). While this code is written to run on Derecho GPU nodes, it can be adapted for other HPC machines.
+This repostory contains a collecion of example workflows for executing multi-node, multi-GPU machine learning training using PyTorch on NSF NCAR's HPC Supercomputers (i.e. Derecho), along with example PBS scripts for running them.
 
-The goal of this repository is to provide a starting point for researchers who want to scale their PyTorch training to multiple GPUs and nodes on NCAR's HPC systems.
+While this code is written to run directly on [Derecho](https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/) GPU nodes, it can be adapted for other GPU HPC machines. Each [Derecho](https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/) node has 4 NVIDIA A100 GPUs connected by NVLink, and nodes are connected via the HPE Slingshot interconnect.
 
-Each strategy includes working code, PBS scripts, and ASCII diagrams explaining the concepts.
+The goal is to provide a starting point for researchers who want to scale their PyTorch training workflow to multiple GPUs and nodes on NCAR's HPC systems using different distributed training paradigms. 
 
-## Derecho GPU Resources
+## Contents
 
-| Component | Specification |
-|-----------|---------------|
-| **GPU Nodes** | 82 nodes |
-| **GPUs per Node** | 4x NVIDIA A100 (40 GB) |
-| **Interconnect** | HPE Slingshot |
-| **Scheduler** | PBS Pro |
 
-**Peak Capability:** 82 nodes x 4 GPUs = **328 A100 GPUs**
 
-## Strategy Comparison
+--------------------------------------------------------------
+## What is Distributed Training?
 
-| Strategy | Dir | What's Split | Communication | Memory Savings | Best For |
-|----------|-----|-------------|---------------|----------------|----------|
-| **DDP** | `01_*` | Data (batches) | Gradient all-reduce | None (full replica) | Most workloads |
-| **FSDP** | `02_*` | Params + grads + optimizer | All-gather + reduce-scatter | High | Large models |
-| **TP** | `03_*` | Weight matrices | All-reduce on activations | Medium | Wide layers (LLMs) |
-| **PP** | `04_*` | Model layers | Send/recv between stages | High | Very deep models |
-| **SP** | `05_*` | Sequence dimension | All-gather + reduce-scatter | Medium | Long sequences |
-| **Hybrid** | `06_*` | TP + FSDP combined | Both | High | Multi-node LLMs |
-| **Domain** | `07_*` | Spatial dimensions | Halo exchange (P2P) | High | High-res spatial data |
+Distributed training allows you to train AI models across multiple GPUs, enabling you to scale up to larger models and datasets than a single GPU can handle. PyTorch provides several built-in strategies for distributed training, each with its own tradeoffs in terms of memory usage, communication overhead, and ease of implementation. 
 
-## Parallelism Strategies Explained
+In this repository, we cover the following strategies:
 
 ### What is DDP (Distributed Data Parallel)?
 
-[Distributed Data Parallel (DDP)](https://pytorch.org/tutorials/intermediate/ddp_tutorial.html) is PyTorch's most widely used distributed training strategy. Each GPU holds a **complete copy** of the model and processes a different slice of the training data. After each backward pass, gradients are synchronized across all GPUs using an all-reduce operation, ensuring every replica stays in sync. DDP scales your effective batch size linearly — 4 GPUs means 4x the data throughput. **Start here** if your model fits on a single GPU. It's the simplest strategy and often the fastest.
-
+[Distributed Data Parallel (DDP)](https://pytorch.org/tutorials/intermediate/ddp_tutorial.html) is PyTorch's most widely used distributed training strategy. Each GPU holds a **complete copy** of the model and processes a different slice of the training data. After each backward pass, gradients are synchronized across all GPUs using an all-reduce operation, ensuring every replica stays in sync. DDP scales your effective batch size linearly.
+**Start here** if your model fits on a single GPU. It's the simplest strategy and often the fastest.
 See [`scripts/01_data_parallel_ddp/`](scripts/01_data_parallel_ddp/) for examples.
 
 ### What is FSDP (Fully Sharded Data Parallelism)?
@@ -50,9 +34,12 @@ See [`scripts/01_data_parallel_ddp/`](scripts/01_data_parallel_ddp/) for example
 
 See [`scripts/02_fully_sharded_fsdp/`](scripts/02_fully_sharded_fsdp/) for examples. For a deeper comparison of DDP vs FSDP, see [this article](https://openmmlab.medium.com/its-2023-is-pytorch-s-fsdp-the-best-choice-for-training-large-models-fe8d2848832f).
 
+
+### More Advanced Strategies: TP, PP, SP, Hybrid, and Domain Parallelism
+
 ### What is Tensor Parallelism (TP)?
 
-[Tensor Parallelism](https://pytorch.org/tutorials/intermediate/TP_tutorial.html) splits individual **weight matrices** across GPUs. Instead of each GPU having a full copy of a large linear layer, the weight matrix is divided column-wise or row-wise so each GPU computes a portion of the output. TP is most effective for models with very large individual layers (e.g., the attention and FFN layers in LLMs). It requires high-bandwidth GPU interconnect since activations are communicated at every layer. On Derecho, keep TP degree ≤ 4 (within a single node).
+[Tensor Parallelism](https://pytorch.org/tutorials/intermediate/TP_tutorial.html) splits individual **weight matrices** across GPUs. Instead of each GPU having a full copy of a large linear layer, the weight matrix is divided column-wise or row-wise so each GPU computes a portion of the output. TP is most effective for models with very large individual layers (e.g., the attention and FFN layers in LLMs). It requires high-bandwidth GPU interconnect since activations are communicated at every layer.
 
 See [`scripts/03_tensor_parallel_tp/`](scripts/03_tensor_parallel_tp/) for examples.
 
@@ -70,69 +57,16 @@ See [`scripts/05_sequence_parallel_sp/`](scripts/05_sequence_parallel_sp/) for e
 
 ### What is Hybrid Parallelism (TP + FSDP)?
 
-For the largest models, a single strategy isn't enough. Hybrid parallelism combines TP within a node (where GPU bandwidth is highest) with FSDP across nodes (where communication cost is higher but less frequent). This is the standard approach for training LLMs at scale. PyTorch's `DeviceMesh` API makes it straightforward to define the 2D mesh of (TP, FSDP) dimensions.
+For the largest models, a single strategy isn't enough. Hybrid parallelism combines TP within a node (where GPU bandwidth is highest) with FSDP across nodes (where communication cost is higher but less frequent). This is the standard approach for training foundation models at scale. PyTorch's `DeviceMesh` API makes it straightforward to define the 2D mesh of (TP, FSDP) dimensions.
 
 See [`scripts/06_hybrid_parallelism/`](scripts/06_hybrid_parallelism/) for examples.
 
 ### What is Domain Parallelism?
+In Scientific AI, we often have large 3D spatial domains that we want to model. Domain Parallelism splits the **spatial domain** across GPUs, so each GPU is responsible for a different chunk of the 3D grid. This is common in climate and weather models. Communication happens at the boundaries of the domain chunks to exchange halo data. This approach can be combined with DDP or FSDP for the model parallelism within each domain chunk.
 
-Domain Parallelism splits the **spatial dimensions** of input data across GPUs. This is particularly relevant for climate/weather models and other scientific applications that process high-resolution spatial grids (e.g., 1024×1024 images or 3D atmospheric fields). Unlike DDP (which replicates the model), domain parallelism keeps the model on each GPU but splits the data spatially. Convolutions near partition boundaries require halo exchange — neighboring GPUs send each other the border rows/columns they need.
+See [`scripts/07_domain_parallelism/`](scripts/07_domain_parallelism/) for examples.
 
-See [`scripts/07_domain_parallel_shardtensor/`](scripts/07_domain_parallel_shardtensor/) for examples.
-
-## Repository Structure
-
-```
-scripts/
-├── 01_data_parallel_ddp/          # Start here — simplest approach
-│   ├── multinode_ddp_basic.py     #   Minimal DDP with synthetic data
-│   ├── distributed_dataloader.py  #   DistributedSampler + DataLoader
-│   └── torchrun_multigpu_ddp.sh   #   PBS job script
-│
-├── 02_fully_sharded_fsdp/         # When model > 40 GB
-│   └── resnet_fsdp_training.py    #   FSDP training with ResNet-18
-│
-├── 03_tensor_parallel_tp/         # When individual layers are huge
-│   ├── 01_basic_tensor_parallel.py
-│   ├── 02_device_mesh_example.py
-│   ├── 03_2d_tensor_parallel.py
-│   └── 04_advanced_tp_example.py
-│
-├── 04_pipeline_parallel_pp/       # When model has 100+ layers
-│   ├── 01_manual_model_split.py   #   Manual send/recv between stages
-│   ├── 02_pipeline_schedules.py   #   GPipe vs 1F1B schedules
-│   └── 03_pipeline_training.py    #   Full training loop with PP
-│
-├── 05_sequence_parallel_sp/       # Long sequences blowing up memory
-│   ├── 01_basic_sequence_parallel.py
-│   ├── 02_sp_transformer_layer.py
-│   └── 03_sp_training.py
-│
-├── 06_hybrid_parallelism/         # TP within nodes + FSDP across nodes
-│   ├── 01_fsdp_tp_hybrid.py
-│   └── llama2_model.py
-│
-├── 07_domain_parallel_shardtensor/  # High-res spatial data (weather/climate)
-│   ├── 01_basic_shardtensor.py
-│   ├── 02_shardtensor_conv.py
-│   ├── 03_domain_parallel_training.py
-│   └── 04_domain_parallel_with_fsdp.py
-│
-├── pbs_common.sh                  # Shared PBS setup (source this)
-│
-utils/
-├── distributed.py                 # Rank detection for all launchers
-├── logging.py                     # Rank-aware logging
-├── config.py                      # Training configuration
-├── profiling.py                   # PyTorch profiler wrapper
-└── checkpointing.py               # Save/load checkpoints
-
-docs/
-├── derecho_guide.md               # Derecho hardware and PBS reference
-├── nccl_tuning.md                 # NCCL env vars for Slingshot
-├── troubleshooting.md             # Common errors and fixes
-└── strategy_decision_guide.md     # Choosing the right strategy
-```
+---------------------------------------
 
 ## Quick Start
 
@@ -143,81 +77,43 @@ git clone https://github.com/NCAR/distributed-pytorch-hpc
 cd distributed-pytorch-hpc
 
 module load conda
+
+# create environment from custom torch wheel built for Derecho (with NCCL tuned for Slingshot)
 conda env create -f environment.yml
 conda activate pytorch-derecho
 ```
 
-### 2. Verify Your Setup
-
-```bash
-# Check that PyTorch sees GPUs and NCCL is available
-python -c "import torch; print(f'PyTorch {torch.__version__}, GPUs: {torch.cuda.device_count()}, NCCL: {torch.cuda.nccl.version()}')"
-```
-
-### 3. Run Your First Distributed Job
-
-```bash
-# Start with single-node multi-GPU (4 GPUs)
+### 2. Run DDP Example
+``` bash
+# submit examples to train on Derecho using PBS scripts in `scripts/`
 cd scripts/01_data_parallel_ddp
-qsub torchrun_multigpu_ddp.sh
-
-# Monitor your job
-qstat -u $USER
-watch -n 5 qstat -u $USER
-
-# Check output
-cat *.log
-```
-
-Or run interactively (from an interactive GPU node):
-
-```bash
-# With mpiexec (recommended on Derecho)
-mpiexec -n 4 --ppn 4 --cpu-bind none python multinode_ddp_basic.py
-
-# With torchrun
-torchrun --standalone --nproc_per_node=4 multinode_ddp_basic.py
-```
-
-### 4. Scale to Multiple Nodes
-
-Once single-node works, scale to 2 nodes (8 GPUs):
-
-```bash
-# Edit the PBS script: change select=1 to select=2, then:
-qsub torchrun_multigpu_ddp.sh
-
-# Or interactively:
-mpiexec -n 8 --ppn 4 --cpu-bind none python multinode_ddp_basic.py
-```
-
-### 5. Try Other Strategies
-
-Once DDP works, explore based on your needs:
-
-```bash
-# FSDP — model too large for 1 GPU
-cd scripts/02_fully_sharded_fsdp
-qsub run_fsdp.sh
-
-# Tensor Parallelism — very large layers
-cd scripts/03_tensor_parallel_tp
-qsub run_tensor_parallel.sh
-
-# Pipeline Parallelism — very deep model
-cd scripts/04_pipeline_parallel_pp
-qsub run_pipeline_parallel.sh
-
-# Sequence Parallelism — long sequences
-cd scripts/05_sequence_parallel_sp
-qsub run_sequence_parallel.sh
+qsub run_ddp.sh -A <your_account>  # submit DDP job to PBS
 ```
 
 ## Launching Distributed Jobs
 
-There are three ways to launch distributed PyTorch scripts. All examples in
-this repo work with any of them — `utils/distributed.py` auto-detects the
-launcher and sets up ranks accordingly.
+In distributed machine learning, a **launcher** is the tool or command that starts your training processes across one or more compute nodes.
+A launcher takes care of the following:
+
+- Starting the correct number of processes across nodes and GPUs
+- Setting environment variables needed for distributed communication
+  (e.g., `RANK`, `WORLD_SIZE`, `MASTER_ADDR`)
+- Coordinating process startup and synchronization
+
+Your training code then uses these environment variables to initialize the process group and set up distributed training.
+
+### Single Node Launching with `torchrun`
+For single-node multi-GPU training, PyTorch's built-in `torchrun` is the simplest option. It automatically sets up the environment variables and spawns one process per GPU. For example, to train on 4 GPUs on a single node:
+```bash
+torchrun --nproc_per_node=4 train.py
+```
+
+On Derecho, we recommend launching distributed jobs using **`mpiexec`** or
+**`torchrun`**. Using `mpiexec` integrates natively with PBS and the
+Slingshot interconnect. `torchrun` is PyTorch's built-in launcher and is
+convenient for single-node testing. All examples in this repo work with
+any of these approaches — `utils/distributed.py` auto-detects the launcher
+and sets up ranks accordingly.
 
 ### Option 1: `torchrun` (single node only)
 
@@ -264,7 +160,7 @@ mpiexec -n $NNODES --ppn 1 --cpu-bind none \
 `mpiexec` launches one process per GPU directly — no `torchrun` involved.
 The script detects its rank from MPI environment variables (`OMPI_*` or
 `PMI_RANK`) via `utils/distributed.py`. This is the approach used by
-`pbs_common.sh` and all PBS scripts in this repo.
+all PBS scripts in this repo.
 
 ```bash
 # Single node, 4 GPUs
@@ -290,10 +186,10 @@ by `utils/distributed.py`).
 | `mpiexec` + `torchrun` | Yes | Yes | Medium |
 | `mpiexec` alone | Yes | Yes | Low |
 
-> **Tip:** All PBS scripts in this repo use Option 3 (`mpiexec` alone) via
-> the `launch_distributed()` helper in
-> [`pbs_common.sh`](scripts/pbs_common.sh). For interactive testing on a
-> single GPU node, `torchrun --standalone` is the quickest way to get started.
+> **Tip:** All PBS scripts in this repo use Option 3 (`mpiexec` alone).
+> Each script is self-contained — copy any `.sh` file as a template for your
+> own job. For interactive testing on a single GPU node, `torchrun --standalone`
+> is the quickest way to get started.
 
 ## Derecho-Specific Configuration
 
@@ -315,25 +211,26 @@ export FI_CXI_DEFAULT_CQ_SIZE=131072    # Larger completion queue
 > transport** over Slingshot. For better multi-node performance, you can
 > use the native OFI transport via the
 > [AWS OFI NCCL Plugin](https://github.com/aws/aws-ofi-nccl) — see
-> [`docs/nccl_tuning.md`](docs/nccl_tuning.md) for details.
+> [`docs/guide/nccl_tuning.md`](docs/guide/nccl_tuning.md) for details.
 
-See [`scripts/pbs_common.sh`](scripts/pbs_common.sh) for the full setup.
+See any of the per-strategy PBS scripts (e.g., `run_fsdp.sh`) for a
+complete, copy-paste-ready template.
 
 ## Documentation
 
 | Guide | Description |
 |-------|-------------|
-| [Strategy Decision Guide](docs/strategy_decision_guide.md) | Choosing the right parallelism strategy |
-| [Derecho Guide](docs/derecho_guide.md) | Hardware topology, PBS, and launch patterns |
-| [NCCL Tuning](docs/nccl_tuning.md) | NCCL environment variables for Slingshot |
-| [Troubleshooting](docs/troubleshooting.md) | Common errors and solutions |
+| [Strategy Decision Guide](docs/guide/strategy_decision_guide.md) | Choosing the right parallelism strategy |
+| [Derecho Guide](docs/guide/derecho_guide.md) | Hardware topology, PBS, and launch patterns |
+| [NCCL Tuning](docs/guide/nccl_tuning.md) | NCCL environment variables for Slingshot |
+| [Troubleshooting](docs/guide/troubleshooting.md) | Common errors and solutions |
+| **Full Documentation** | `mkdocs serve -f docs/mkdocs.yml` to preview locally |
 
 ## References
 
 - [PyTorch Distributed Overview](https://pytorch.org/tutorials/beginner/dist_overview.html)
 - [PyTorch DDP Tutorial](https://pytorch.org/tutorials/intermediate/ddp_tutorial.html)
 - [PyTorch FSDP Tutorial](https://pytorch.org/tutorials/intermediate/FSDP_tutorial.html)
-- [Megatron-LM Paper](https://arxiv.org/abs/1909.08053)
 - [NCAR Derecho Documentation](https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/)
 
 ---

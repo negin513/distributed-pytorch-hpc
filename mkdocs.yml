@@ -1,5 +1,5 @@
-docs_dir: .
-site_dir: ../site
+docs_dir: docs
+site_dir: site
 site_name: Distributed PyTorch on HPC
 site_description: Multi-node, multi-GPU PyTorch distributed training on NCAR's Derecho
 site_url: https://ncar.github.io/distributed-pytorch-hpc/

@@ -133,12 +133,12 @@ model = parallelize_module(
 
 ## TP Degree on Derecho
 
-TP requires frequent all-reduces between GPUs. On systems with NVLink
-(600+ GB/s), TP can scale to 8 GPUs. On Derecho with PCIe (~25 GB/s),
-keep TP within a single node:
+TP requires frequent all-reduces between GPUs. On Derecho, each node
+has 4 A100 GPUs connected via NVLink (600 GB/s), so keep TP within a
+single node:
 
 ```
-Derecho: 4 GPUs per node, PCIe Gen4
+Derecho: 4 GPUs per node, NVLink (600 GB/s)
 
 Recommended: TP degree = 4 (one full node)
 

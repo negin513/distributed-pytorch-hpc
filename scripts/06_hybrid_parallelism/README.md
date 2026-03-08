@@ -17,7 +17,7 @@ Combining strategies allows:
 
 ## 2D Device Mesh — TP + FSDP
 
-The standard approach combines TP within nodes (fast PCIe/NVLink) with
+The standard approach combines TP within nodes (fast NVLink) with
 FSDP across nodes (Slingshot fabric). A 2D device mesh organizes the GPUs:
 
 ```
@@ -29,7 +29,7 @@ FSDP across nodes (Slingshot fabric). A 2D device mesh organizes the GPUs:
    FSDP        │Node│   │FSDP │ │FSDP │ │FSDP │ │FSDP │
    dimension   │ 0  │   │ =0  │ │ =0  │ │ =0  │ │ =0  │
    (across     │    │   └──┬──┘ └──┬──┘ └──┬──┘ └──┬──┘
-   nodes)      ├────┤      │PCIe   │PCIe   │PCIe   │
+   nodes)      ├────┤      │NVLink │NVLink │NVLink │
                │    │ ─ ─ ─│─ ─ ─ ─│─ ─ ─ ─│─ ─ ─ ─│─ ─
                │    │   ┌──┴──┐ ┌──┴──┐ ┌──┴──┐ ┌──┴──┐
                │Node│   │TP=0 │ │TP=1 │ │TP=2 │ │TP=3 │
@@ -45,7 +45,7 @@ FSDP across nodes (Slingshot fabric). A 2D device mesh organizes the GPUs:
                └────┤   └─────┘ └─────┘ └─────┘ └─────┘
                     └─────────────────────────────────┘
 
-TP communication (all-reduce):  fast, within node (PCIe)
+TP communication (all-reduce):  fast, within node (NVLink)
 FSDP communication (all-gather/reduce-scatter): across nodes (Slingshot)
 ```
 
@@ -84,7 +84,7 @@ Input (each GPU has full batch chunk)          │
 ### 1. FSDP + TP (Recommended for Most Large Models)
 
 **How it works:**
-- TP within a node (fast PCIe on Derecho)
+- TP within a node (fast NVLink on Derecho)
 - FSDP across nodes (Slingshot fabric)
 
 **Best for:**

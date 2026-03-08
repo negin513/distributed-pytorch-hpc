@@ -107,7 +107,7 @@ bubbles small.
 ## Derecho Configuration Reference
 
 ```
-NCAR Derecho: 82 nodes × 4 A100 (40 GB), PCIe, Slingshot 11
+NCAR Derecho: 82 nodes × 4 A100 (40 GB HBM2), NVLink (600 GB/s), Slingshot 11
 
  GPUs    Nodes    Strategy              Config
 ─────────────────────────────────────────────────────
@@ -122,7 +122,7 @@ NCAR Derecho: 82 nodes × 4 A100 (40 GB), PCIe, Slingshot 11
 328      82       TP=4 + FSDP=82        Full cluster
 ─────────────────────────────────────────────────────
 
-Key constraint: TP degree ≤ 4 (PCIe, not NVLink).
+Key constraint: TP degree ≤ 4 (one node, 4 GPUs with NVLink).
 Always keep TP within a single node.
 ```
 
@@ -135,9 +135,9 @@ it adds communication overhead with no memory benefit.
 
 ### TP across nodes
 
-On Derecho, TP communication over Slingshot is much slower than NVLink
-systems expect. Keep TP=4 (one node) and use FSDP for cross-node
-sharding.
+On Derecho, each node has 4 GPUs connected via NVLink (600 GB/s).
+Keep TP=4 (one node) to stay on NVLink, and use FSDP for cross-node
+sharding over Slingshot.
 
 ### Too few micro-batches with PP
 

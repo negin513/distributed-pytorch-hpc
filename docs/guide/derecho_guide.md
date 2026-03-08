@@ -8,15 +8,15 @@ NCAR Derecho — GPU Partition
 
 82 GPU Nodes, each:
 ┌──────────────────────────────────────────────────────┐
-│  Node (AMD EPYC 7763 — 64 cores, 512 GB RAM)        │
+│  Node (AMD EPYC 7763 — 64 cores, 512 GB RAM)         │
 │                                                      │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐ │
-│  │ A100    │  │ A100    │  │ A100    │  │ A100    │ │
-│  │ 40 GB   │  │ 40 GB   │  │ 40 GB   │  │ 40 GB   │ │
-│  │ GPU 0   │  │ GPU 1   │  │ GPU 2   │  │ GPU 3   │ │
-│  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘ │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  │
+│  │ A100    │  │ A100    │  │ A100    │  │ A100    │  │
+│  │ 40 GB   │  │ 40 GB   │  │ 40 GB   │  │ 40 GB   │  │
+│  │ GPU 0   │  │ GPU 1   │  │ GPU 2   │  │ GPU 3   │  │
+│  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘  │
 │       │            │            │            │       │
-│       └─────── PCIe Gen4 ───────────────────┘       │
+│       └─────── PCIe Gen4 ───────────────────┘        │
 │                                                      │
 └──────────────────────┬───────────────────────────────┘
                        │
@@ -24,24 +24,12 @@ NCAR Derecho — GPU Partition
                  (200 Gbps per node)
                        │
 ┌──────────────────────┴───────────────────────────────┐
-│                Slingshot Fabric                       │
+│                Slingshot Fabric                      │
 │         (Dragonfly topology, 82 GPU nodes)           │
 └──────────────────────────────────────────────────────┘
 
 Peak: 82 nodes × 4 GPUs = 328 A100 GPUs
 ```
-
-### Key Bandwidth Numbers
-
-| Path | Bandwidth | Latency |
-|------|-----------|---------|
-| GPU ↔ GPU (same node, PCIe) | ~25 GB/s | ~10 μs |
-| GPU ↔ CPU (PCIe Gen4) | ~25 GB/s | ~5 μs |
-| Node ↔ Node (Slingshot) | ~25 GB/s (200 Gbps) | ~1-5 μs |
-
-**Note:** Derecho GPUs are connected via PCIe, **not NVLink**. This means
-intra-node GPU-GPU bandwidth is the same as inter-node bandwidth.
-This is important for parallelism strategy decisions.
 
 ## PBS Job Script Reference
 
@@ -49,15 +37,13 @@ This is important for parallelism strategy decisions.
 
 ```bash
 #!/bin/bash
-#PBS -A YOUR_PROJECT    # Project allocation code
+#PBS -A YOUR_PROJECT    
 #PBS -N job_name        # Job name (shows in qstat)
-#PBS -l walltime=01:00:00                           # Max runtime
-#PBS -l select=1:mpiprocs=1:ncpus=64:ngpus=4:mem=480GB  # Resources
+#PBS -l walltime=01:00:00                          
+#PBS -l select=1:mpiprocs=1:ncpus=64:ngpus=4
 #PBS -q main            # Queue (main for GPU jobs)
 #PBS -j oe              # Merge stdout and stderr
 ```
-
-### PBS Directives Explained
 
 | Directive | Meaning |
 |-----------|---------|
@@ -67,7 +53,6 @@ This is important for parallelism strategy decisions.
 | `#PBS -l ncpus=64` | CPU cores per node (64 on Derecho) |
 | `#PBS -l ngpus=4` | GPUs per node (4 on Derecho) |
 | `#PBS -l mem=480GB` | RAM per node (max ~480 GB usable) |
-| `#PBS -q main` | GPU queue |
 | `#PBS -j oe` | Combine stdout/stderr into one file |
 | `#PBS -l walltime=HH:MM:SS` | Maximum wall clock time |
 
@@ -151,7 +136,7 @@ export NCCL_CROSS_NIC=1              # Enable cross-NIC communication
 export CUDA_VISIBLE_DEVICES=0,1,2,3  # Expose all 4 GPUs
 ```
 
-### Libfabric / CXI (Slingshot)
+#### Libfabric / CXI (Slingshot)
 
 ```bash
 export FI_CXI_DISABLE_HOST_REGISTER=1   # Prevent CUDA deadlocks with CXI

@@ -13,15 +13,6 @@ code and a PBS job script for Derecho.
 | `06_hybrid_parallelism/` | TP + FSDP | TP within nodes, FSDP across nodes | `run_hybrid.sh` |
 | `07_domain_parallel_shardtensor/` | Domain | Split spatial dimensions (halo exchange) | `run_domain_parallel.sh` |
 
-## Shared Setup
-
-All PBS scripts source [`pbs_common.sh`](pbs_common.sh) which handles:
-- Module loading (`nvhpc`, `cuda`, `cray-mpich`, `conda`)
-- Conda activation (`${CONDA_ENV:-pytorch-derecho}`)
-- NCCL configuration for Derecho Slingshot
-- Node discovery from `PBS_NODEFILE`
-- `launch_distributed()` helper for single/multi-node runs
-
 ## Quick Start
 
 ```bash

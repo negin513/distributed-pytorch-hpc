@@ -2,6 +2,7 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Derecho](https://img.shields.io/badge/HPC-Derecho-green)](https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/)
+[![Docs](https://img.shields.io/badge/Docs-online-blue)](https://negin513.github.io/distributed-pytorch-hpc/)
 
 ## Overview
 
@@ -215,16 +216,6 @@ export FI_CXI_DEFAULT_CQ_SIZE=131072    # Larger completion queue
 
 See any of the per-strategy PBS scripts (e.g., `run_fsdp.sh`) for a
 complete, copy-paste-ready template.
-
-## Documentation
-
-| Guide | Description |
-|-------|-------------|
-| [Strategy Decision Guide](docs/guide/strategy_decision_guide.md) | Choosing the right parallelism strategy |
-| [Derecho Guide](docs/guide/derecho_guide.md) | Hardware topology, PBS, and launch patterns |
-| [NCCL Tuning](docs/guide/nccl_tuning.md) | NCCL environment variables for Slingshot |
-| [Troubleshooting](docs/guide/troubleshooting.md) | Common errors and solutions |
-| **Full Documentation** | `mkdocs serve -f docs/mkdocs.yml` to preview locally |
 
 ## References
 

@@ -288,7 +288,7 @@ nodes, making intra-node communication much faster. The practical
 consequence: keep communication-heavy strategies (TP) within a single
 node, and use bandwidth-efficient strategies (FSDP, DDP) across nodes.
 
-See the [Derecho Guide](../derecho_guide.md) for full hardware specs.
+See the [Derecho Guide](derecho_guide.md) for full hardware specs.
 
 ## Hands-On: Try the Primitives
 

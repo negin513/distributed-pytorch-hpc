@@ -268,25 +268,26 @@ The speed of these operations depends on the hardware connecting your GPUs — b
 ```
 Derecho Topology:
 ┌─────────────────────────────────┐
-│ Node (4× A100, PCIe Gen4)      │
+│ Node (4× A100, NVLink 600 GB/s) │
 │                                 │
-│  GPU 0 ←─PCIe─→ GPU 1          │    
+│  GPU 0 ←NVLink→ GPU 1           │
 │    ↕               ↕            │
-│  GPU 2 ←─PCIe─→ GPU 3          │
+│  GPU 2 ←NVLink→ GPU 3           │
 │                                 │
 └──────────────┬──────────────────┘
                │ Slingshot 11
-               │ 
+               │
 ┌──────────────┴──────────────────┐
-│ Node (4× A100, PCIe Gen4)      │
+│ Node (4× A100, NVLink 600 GB/s) │
 │  ...                            │
 └─────────────────────────────────┘
 ```
 
-Most GPU clusters have NVLink (600+ GB/s) within
-nodes, making intra-node communication much faster. The practical
-consequence: keep communication-heavy strategies (TP) within a single
-node, and use bandwidth-efficient strategies (FSDP, DDP) across nodes.
+On Derecho, the 4 A100 GPUs within each node are connected via NVLink
+(600 GB/s), making intra-node communication much faster than inter-node
+Slingshot. The practical consequence: keep communication-heavy strategies
+(TP) within a single node, and use bandwidth-efficient strategies (FSDP,
+DDP) across nodes.
 
 See the [Derecho Guide](derecho_guide.md) for full hardware specs.
 

@@ -83,11 +83,10 @@ memory. Usually combined with TP (SP is an extension of TP).
 TP within nodes (fast PCIe), FSDP across nodes. The standard approach
 for training large language models at scale.
 
-### "My input images/grids are too large for 1 GPU"
+### "My input images/grids are too large for 1 GPU --> Most SciML workflows"
 → **Domain Parallel** (`07_domain_parallel_shardtensor/`)
 
-Split spatial dimensions across GPUs. Critical for weather/climate models,
-medical imaging, and CFD with high-resolution grids.
+Split spatial dimensions across GPUs. Critical for weather/climate models and CFD workflows with high-resolution grids.
 
 ## Derecho-Specific Recommendations
 
@@ -105,10 +104,6 @@ Recommended configurations:
   8       2       TP=4 + FSDP=2         TP within node, FSDP across
  16       4       TP=4 + FSDP=4         Standard LLM training
  32       8       TP=4 + FSDP=8         Large-scale training
- 328     82       TP=4 + FSDP=82        Full cluster
 ─────────────────────────────────────────────────────
 
-Note: Since Derecho uses PCIe (not NVLink), TP communication
-cost is higher than on DGX systems. Keep TP degree ≤ 4
-(within a single node).
 ```

@@ -80,13 +80,12 @@ channel) bundles a generic NCCL that uses **TCP sockets** over the
 Slingshot interfaces (`hsn0`, `hsn1`). This is what `NCCL_SOCKET_IFNAME=hsn`
 enables.
 
-- **Functional** but not optimal for multi-node training
-- Higher latency and lower bandwidth than native OFI transport
+- **Functional** but not optimal for multi-node training at all. We don't recommend this for multi-node jobs. It's fine for single-node multi-GPU training, but for multi-node, TCP sockets have much higher latency and lower bandwidth than a native OFI transport.
 - No GPU Direct RDMA — data copies through host memory
 
 > **Note:** This repo's `environment.yml` uses Derecho-optimized PyTorch
-> builds with an NCCL built for Cray MPICH + Slingshot, which may already
-> include OFI transport support.
+> builds with an NCCL built for Cray MPICH + Slingshot, which already
+> include OFI transport support. To learn more about building pytorch + CUDA-aware MPICH + OFI from source, see this [repo](https://github.com/benkirk/derecho-pytorch-mpi).
 
 ### 2. Native OFI Transport (Requires NCCL + AWS OFI Plugin built from source)
 
@@ -147,21 +146,9 @@ export NCCL_SOCKET_IFNAME=hsn
 export NCCL_DEBUG=INFO
 # Then run your training script and look for:
 #   "NCCL INFO Using network AWS Libfabric"   → OFI transport (good)
-#   "NCCL INFO Using network Socket"          → TCP sockets (default)
+#   "NCCL INFO Using network Socket"          → TCP sockets (default --> bad)
 ```
 
-### Performance Comparison
-
-| Transport | Multi-Node Bandwidth | Latency | GPU Direct RDMA |
-|-----------|---------------------|---------|-----------------|
-| Socket (default) | ~10-15 GB/s | Higher | No |
-| OFI + libfabric | ~20-25 GB/s | Lower | Yes |
-
-> **Bottom line:** The examples in this repo work correctly with the
-> default socket transport. For production multi-node training at scale,
-> the OFI transport provides meaningfully better performance. Start with
-> the defaults to get your code working, then upgrade the NCCL backend
-> when scaling up.
 
 ## Debug Settings
 
@@ -184,36 +171,6 @@ export NCCL_DEBUG=TRACE      # Every collective call (very verbose!)
 export NCCL_DEBUG_FILE=/path/to/nccl_%h_%p.log  # Per-host log files
 export NCCL_DEBUG_SUBSYS=ALL  # All subsystems
 ```
-
-### PyTorch-Level Debugging
-
-```bash
-export TORCH_DISTRIBUTED_DEBUG=DETAIL  # Log all dist.* calls
-```
-
-## Full Environment Variable Reference
-
-| Variable | Values | Default | Purpose |
-|----------|--------|---------|---------|
-| `NCCL_SOCKET_IFNAME` | Interface name(s) | auto | Network interface for socket connections |
-| `NCCL_IB_DISABLE` | 0, 1 | 0 | Disable InfiniBand transport |
-| `NCCL_SHM_DISABLE` | 0, 1 | 0 | Disable shared memory transport |
-| `NCCL_CROSS_NIC` | 0, 1, 2 | 0 | Cross-NIC communication mode |
-| `NCCL_P2P_DISABLE` | 0, 1 | 0 | Disable GPU peer-to-peer |
-| `NCCL_P2P_LEVEL` | LOC, NVL, PIX, PXB, PHB, SYS | auto | P2P communication level |
-| `NCCL_NET_GDR_LEVEL` | LOC, PIX, PXB, PHB, SYS | auto | GPU Direct RDMA level |
-| `NCCL_NCHANNELS_PER_NET_PEER` | 1-32 | auto | Channels per network peer |
-| `NCCL_MAX_NCHANNELS` | 1-32 | auto | Maximum channels per connection |
-| `NCCL_MIN_NCHANNELS` | 1-32 | auto | Minimum channels per connection |
-| `NCCL_BUFFSIZE` | bytes | 4194304 | Buffer size per channel |
-| `NCCL_NTHREADS` | 64-1024 | auto | CUDA threads per NCCL kernel |
-| `NCCL_ALGO` | Ring, Tree, CollNetDirect, CollNetChain | auto | Collective algorithm |
-| `NCCL_PROTO` | Simple, LL, LL128 | auto | Communication protocol |
-| `NCCL_DEBUG` | VERSION, WARN, INFO, TRACE | WARN | Debug log level |
-| `NCCL_DEBUG_FILE` | path | stderr | Debug output file |
-| `NCCL_DEBUG_SUBSYS` | INIT, NET, ... ALL | ALL | Debug subsystems |
-| `NCCL_TIMEOUT` | ms | 300000 | Watchdog timeout (5 min default) |
-| `NCCL_ASYNC_ERROR_HANDLING` | 0, 1 | 1 | Enable async error handling |
 
 ## Troubleshooting Common NCCL Issues
 
@@ -241,7 +198,7 @@ Fix:   Ensure NCCL_SOCKET_IFNAME=hsn and consider OFI plugin
 Debug: export NCCL_DEBUG=INFO  (look for "Using network" line)
 ```
 
-### NCCL Timeout
+### NCCL Timeouts...
 
 ```
 Cause: One rank is stuck or deadlocked

@@ -38,7 +38,7 @@ FSDP dimension  │  (0,0)   (0,1)   (0,2)   (0,3)  │
                 │  (1,0)   (1,1)   (1,2)   (1,3)  │
                 └──────────────────────────────┘
 
-TP groups (communicate via PCIe, fast):
+TP groups (communicate via NVLink, fast):
   [GPU 0, 1, 2, 3]   ← Node 0
   [GPU 4, 5, 6, 7]   ← Node 1
 

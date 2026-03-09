@@ -1,0 +1,1638 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Multi-node, multi-GPU PyTorch distributed training on NCAR's Derecho">
+      
+      
+      
+        <link rel="canonical" href="https://negin513.github.io/distributed-pytorch-hpc/guide/03_communication_primitives/">
+      
+      
+        <link rel="prev" href="../02_why_distributed/">
+      
+      
+        <link rel="next" href="../04_data_parallel_ddp/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+    
+    
+      
+        <title>3. Communication Primitives - Distributed PyTorch on HPC</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#chapter-3-communication-primitives-collective-operations" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Distributed PyTorch on HPC" class="md-header__button md-logo" aria-label="Distributed PyTorch on HPC" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Distributed PyTorch on HPC
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              3. Communication Primitives
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/negin513/distributed-pytorch-hpc" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    negin513/distributed-pytorch-hpc
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Distributed PyTorch on HPC" class="md-nav__button md-logo" aria-label="Distributed PyTorch on HPC" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Distributed PyTorch on HPC
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/negin513/distributed-pytorch-hpc" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    negin513/distributed-pytorch-hpc
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../01_single_gpu_baseline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    1. Single-GPU Baseline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../02_why_distributed/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2. Why Distributed?
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    3. Communication Primitives
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    3. Communication Primitives
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#processes-and-ranks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Processes and Ranks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#launchers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Launchers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Launchers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#torchrun" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        torchrun
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#process-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Process Groups
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Process Groups">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#backends" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backends
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-five-collective-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Five Collective Operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The Five Collective Operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-all-reduce" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. All-Reduce
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-all-gather" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. All-Gather
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-reduce-scatter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Reduce-Scatter
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-broadcast" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Broadcast
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-point-to-point-sendrecv" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Point-to-Point (Send/Recv)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-all-to-all" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. All-to-All
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hardware-topology-matters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hardware Topology Matters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hands-on-try-the-primitives" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hands-On: Try the Primitives
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#whats-next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What's Next?
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../04_data_parallel_ddp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4. Data Parallel (DDP)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../05_fully_sharded_fsdp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    5. Fully Sharded (FSDP)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../06_tensor_parallel/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    6. Tensor Parallel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../07_pipeline_parallel/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    7. Pipeline Parallel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../08_sequence_parallel/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    8. Sequence Parallel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../09_hybrid_parallelism/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    9. Hybrid Parallelism
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../10_domain_parallel/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    10. Domain Parallel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../12_hpc_operations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    12. HPC Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../derecho_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Derecho Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../nccl_tuning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NCCL Tuning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../strategy_decision_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Strategy Decision Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#processes-and-ranks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Processes and Ranks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#launchers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Launchers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Launchers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#torchrun" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        torchrun
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#process-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Process Groups
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Process Groups">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#backends" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backends
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-five-collective-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Five Collective Operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The Five Collective Operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-all-reduce" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. All-Reduce
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-all-gather" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. All-Gather
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-reduce-scatter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Reduce-Scatter
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-broadcast" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Broadcast
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-point-to-point-sendrecv" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Point-to-Point (Send/Recv)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-all-to-all" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. All-to-All
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hardware-topology-matters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hardware Topology Matters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hands-on-try-the-primitives" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hands-On: Try the Primitives
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#whats-next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What's Next?
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="chapter-3-communication-primitives-collective-operations">Chapter 3: Communication Primitives (Collective Operations)<a class="headerlink" href="#chapter-3-communication-primitives-collective-operations" title="Permanent link">&para;</a></h1>
+<p>Every distributed strategy from <a href="../02_why_distributed/">Chapter 2</a> boils down to a pattern of
+communication (collective operations) between GPUs. </p>
+<p>This chapter covers the building blocks:
+ranks, process groups, and the five collective operations you'll see
+throughout the guide.</p>
+<p><strong>Key insight:</strong> Once you understand these primitives, every distributed
+strategy is just a specific pattern of these operations.</p>
+<h2 id="processes-and-ranks">Processes and Ranks<a class="headerlink" href="#processes-and-ranks" title="Permanent link">&para;</a></h2>
+<p>Distributed training runs multiple copies of your training script simultaneously — one per GPU. Each copy is called a <strong>process</strong>, and each process has a unique identifier called a <strong>rank</strong>.</p>
+<p>Each process is identified by three numbers (assigned by the launcher):</p>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+<th>Range</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>WORLD_SIZE</code></td>
+<td>Total number of processes</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>WORLD_RANK</code> (or <code>RANK</code>)</td>
+<td>Global ID of this process</td>
+<td>0 to WORLD_SIZE-1</td>
+</tr>
+<tr>
+<td><code>LOCAL_RANK</code></td>
+<td>ID within this node</td>
+<td>0 to GPUs_per_node-1</td>
+</tr>
+</tbody>
+</table>
+<p>For example, with 2 nodes and 4 GPUs each, you have 8 processes with <code>WORLD_RANK</code>s 0-7. Each node has local <code>LOCAL_RANK</code>s 0-3. The <code>LOCAL_RANK</code> is used to assign a GPU to each process, while the <code>WORLD_RANK</code> is used for coordination (e.g., rank 0 handles logging and checkpointing). 
+<code>WORLD_SIZE</code> is the total number of processes (8 in this example) and is used for scaling learning rates and calculating effective batch sizes.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>┌─────────────────────────────────────────────────────────────────────┐
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>│              WORLD RANK VS LOCAL RANK (2 nodes × 4 GPUs)            │
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>├─────────────────────────────────────────────────────────────────────┤
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>│                                                                     │
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>│   Node 0                              Node 1                        │
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>│   ┌───────────────────────────┐       ┌───────────────────────────┐ │
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>│   │  ┌─────┐ ┌─────┐          │       │  ┌─────┐ ┌─────┐          │ │
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>│   │  │GPU 0│ │GPU 1│          │       │  │GPU 0│ │GPU 1│          │ │
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>│   │  │     │ │     │          │       │  │     │ │     │          │ │
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>│   │  │LR=0 │ │LR=1 │          │       │  │LR=0 │ │LR=1 │          │ │
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>│   │  │WR=0 │ │WR=1 │          │       │  │WR=4 │ │WR=5 │          │ │
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>│   │  └─────┘ └─────┘          │       │  └─────┘ └─────┘          │ │
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>│   │  ┌─────┐ ┌─────┐          │       │  ┌─────┐ ┌─────┐          │ │
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>│   │  │GPU 2│ │GPU 3│          │       │  │GPU 2│ │GPU 3│          │ │
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>│   │  │     │ │     │          │       │  │     │ │     │          │ │
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>│   │  │LR=2 │ │LR=3 │          │       │  │LR=2 │ │LR=3 │          │ │
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>│   │  │WR=2 │ │WR=3 │          │       │  │WR=6 │ │WR=7 │          │ │
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>│   │  └─────┘ └─────┘          │       │  └─────┘ └─────┘          │ │
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>│   └───────────────────────────┘       └───────────────────────────┘ │
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>│                                                                     │
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>│   LR = LOCAL_RANK (0-3 on each node) → Use for: torch.cuda.set_device│
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>│   WR = WORLD_RANK (0-7 globally)     → Use for: distributed ops     │
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>│                                                                     │
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>│   WORLD_SIZE = 8 (total processes)                                  │
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>│                                                                     │
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>└─────────────────────────────────────────────────────────────────────┘
+</code></pre></div>
+<ul>
+<li>You use <code>LOCAL_RANK</code> to assign a GPU: <code>torch.cuda.set_device(LOCAL_RANK)</code>.</li>
+<li>You use <code>WORLD_RANK</code> for coordination: rank 0 typically handles logging,
+checkpointing, and data download.</li>
+<li><code>WORLD_SIZE</code> is used for scaling learning rates and calculating effective batch sizes.
+effective batch size = <code>batch_size × WORLD_SIZE</code>.</li>
+</ul>
+<p>The above three variables are set by your launcher (e.g., <code>torchrun</code>, <code>mpiexec</code>) when you start your distributed job. The launcher ensures that each process gets the correct rank and world size, allowing them to coordinate properly.</p>
+<h2 id="launchers">Launchers<a class="headerlink" href="#launchers" title="Permanent link">&para;</a></h2>
+<p>To start a distributed training job, you use a launcher that spawns multiple processes with the appropriate environment variables set.</p>
+<p>The most common launchers are:</p>
+<table>
+<thead>
+<tr>
+<th>Launcher</th>
+<th>Use for</th>
+<th>Example Command</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>torchrun</code></td>
+<td>Single-node multi-GPU</td>
+<td><code>torchrun --nproc_per_node=4 train.py</code></td>
+</tr>
+<tr>
+<td><code>mpiexec</code> or <code>mpirun</code></td>
+<td>Multi-node</td>
+<td><code>mpiexec -n 8 --ppn 4 --cpu-bind none python train.py</code></td>
+</tr>
+</tbody>
+</table>
+<p>For multi-node training, <code>mpiexec</code> or <code>mpirun</code> can be used, but you need to ensure that the environment variables are correctly set across nodes.</p>
+<p>You can also use <code>mpiexec</code> + <code>torchrun</code> for multi-node training, but this requires additional setup to ensure that the environment variables are correctly propagated across nodes.</p>
+<h3 id="torchrun"><code>torchrun</code><a class="headerlink" href="#torchrun" title="Permanent link">&para;</a></h3>
+<p><code>torchrun</code> is the recommended launcher for single-node multi-GPU training. It automatically sets <code>LOCAL_RANK</code>, <code>WORLD_RANK</code>, and <code>WORLD_SIZE</code> for each process.</p>
+<p>For example, if you have 4 GPUs on a single node, you can launch your training script with:</p>
+<p><div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>torchrun<span class="w"> </span>--nproc_per_node<span class="o">=</span><span class="m">4</span><span class="w"> </span>train.py
+</code></pre></div>
+This will start 4 processes, each with <code>LOCAL_RANK</code> 0-3 and <code>WORLD_RANK</code> 0-3, and <code>WORLD_SIZE</code> 4.</p>
+<p>For multi-node training, using <code>torchrun</code> requires additional setup to ensure that the environment variables are correctly propagated across nodes. This can be done with the <code>--rdzv_backend</code> and <code>--rdzv_endpoint</code> options, but it is often simpler to use <code>mpiexec</code> for multi-node training.</p>
+<p>Essentially, you have to run <code>torchrun</code> on each node, and ensure that the <code>WORLD_RANK</code> and <code>WORLD_SIZE</code> are correctly set across nodes. This can be complex, which is why <code>mpiexec</code> is often preferred for multi-node training.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a># On Node 1 -- (the master node)
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>torhcrun --nodes 2
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    --nproc_per_node=4 \
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    --node_rank=0 \
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    --master_addr=node1 \ # IP or hostname of the master node
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    --master_port=29500 \
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    train.py    
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a># On Node 2 -- (the worker node)
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>torchrun --nodes 2
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    --nproc_per_node=4 \
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    --node_rank=1 \
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    --master_addr=node1 \ # IP or hostname of the master node
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>    --master_port=29500 \
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>    train.py
+</code></pre></div>
+<p>In practice, for multi-node training, it's often simpler to use <code>mpiexec</code> or <code>mpirun</code>, which handles the multi-node coordination for you.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>mpiexec -n 8 --ppn 4 --cpu-bind none python train.py
+</code></pre></div>
+<p>But you need to ensure that your training script correctly initializes the process group and sets the device based on the environment variables set by <code>mpiexec</code>.</p>
+<p>The <code>utils/distributed.py</code> file in this repository provides a <code>setup_distributed()</code> function that abstracts away the details of initializing the process group and setting the device, making it easier to write distributed training scripts that can work with different launchers, such as <code>torchrun</code>, OpenMPI, or Cray MPICH.</p>
+<p>This table summarizes the launchers and their environment variable handling:</p>
+<table>
+<thead>
+<tr>
+<th>Launcher</th>
+<th>WORLD_RANK</th>
+<th>LOCAL_RANK</th>
+<th>WORLD_SIZE</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>torchrun</td>
+<td><code>RANK</code></td>
+<td><code>LOCAL_RANK</code></td>
+<td><code>WORLD_SIZE</code></td>
+</tr>
+<tr>
+<td>OpenMPI</td>
+<td><code>OMPI_COMM_WORLD_RANK</code></td>
+<td><code>OMPI_COMM_WORLD_LOCAL_RANK</code></td>
+<td><code>OMPI_COMM_WORLD_SIZE</code></td>
+</tr>
+<tr>
+<td>SLURM</td>
+<td><code>SLURM_PROCID</code></td>
+<td><code>SLURM_LOCALID</code></td>
+<td><code>SLURM_NTASKS</code></td>
+</tr>
+<tr>
+<td>Cray MPICH</td>
+<td><code>PMI_RANK</code></td>
+<td><code>PMI_LOCAL_RANK</code></td>
+<td><code>PMI_SIZE</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="process-groups">Process Groups<a class="headerlink" href="#process-groups" title="Permanent link">&para;</a></h2>
+<p>A <strong>process group</strong> is a set of ranks that communicate together. When you
+call <code>init_process_group()</code>, it creates the default group containing all
+ranks:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">torch.distributed</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">dist</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">dist</span><span class="o">.</span><span class="n">init_process_group</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="s2">&quot;nccl&quot;</span><span class="p">)</span>  <span class="c1"># all ranks join</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1"># All ranks can now communicate with each other</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="n">dist</span><span class="o">.</span><span class="n">all_reduce</span><span class="p">(</span><span class="n">tensor</span><span class="p">)</span>  <span class="c1"># works across all ranks</span>
+</code></pre></div>
+<p>Sometimes you need only some ranks to communicate. This is common in hybrid parallelism (e.g., FSDP within nodes, DDP across nodes). In that case, you create <strong>subgroups</strong>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Create a subgroup for ranks 0-3 (e.g., for TP within nodee 1)</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">tp_group</span> <span class="o">=</span> <span class="n">dist</span><span class="o">.</span><span class="n">new_group</span><span class="p">(</span><span class="n">ranks</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># Create a subgroup for ranks 4-7 (e.g., for TP within node 2)</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">tp_group_2</span> <span class="o">=</span> <span class="n">dist</span><span class="o">.</span><span class="n">new_group</span><span class="p">(</span><span class="n">ranks</span><span class="o">=</span><span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">])</span>
+</code></pre></div>
+<h3 id="backends">Backends<a class="headerlink" href="#backends" title="Permanent link">&para;</a></h3>
+<p>A <strong>backend</strong> is the library that actually performs the communication between GPUs. Different backends are optimized for different hardware.</p>
+<table>
+<thead>
+<tr>
+<th>Backend</th>
+<th>Hardware</th>
+<th>Use for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nccl</code></td>
+<td>NVIDIA GPUs</td>
+<td>GPU tensors (default for training)</td>
+</tr>
+<tr>
+<td><code>gloo</code></td>
+<td>CPU</td>
+<td>CPU tensors, fallback</td>
+</tr>
+<tr>
+<td><code>mpi</code></td>
+<td>Any</td>
+<td>When MPI is your launcher</td>
+</tr>
+</tbody>
+</table>
+<p>On Derecho, use <code>nccl</code> for GPU communication; but you need to ensure that your cluster has the necessary libraries installed and configured for Cray HPE Slingshot 11.
+The wheel provided in <code>environment.yaml</code> includes NCCL support for Slingshot 11, but you may need to verify that the correct version of NCCL is being used and that it is properly configured for your cluster's network topology.</p>
+<h2 id="the-five-collective-operations">The Five Collective Operations<a class="headerlink" href="#the-five-collective-operations" title="Permanent link">&para;</a></h2>
+<p><strong>Collective operations</strong> (or "collectives") are communication patterns where multiple ranks participate together. Every distributed training strategy is built from these primitives.</p>
+<h3 id="1-all-reduce">1. All-Reduce<a class="headerlink" href="#1-all-reduce" title="Permanent link">&para;</a></h3>
+<p>Every GPU starts with a value. After all-reduce operations, every GPU has the
+<strong>sum</strong> (or average, min, max) of all values across GPUs.</p>
+<p>This is the core of DDP, where gradients are all-reduced after each backward pass to compute the average gradient across all GPUs before the optimizer step.</p>
+<p>+<img alt="NVIDIA All-Reduce illustration" src="https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/_images/allreduce.png" />
+Image source: NVIDIA NCCL documentation</p>
+<h3 id="2-all-gather">2. All-Gather<a class="headerlink" href="#2-all-gather" title="Permanent link">&para;</a></h3>
+<p>Each GPU has a piece. After all-gather, every GPU has <strong>all the pieces
+concatenated</strong>. </p>
+<p>FSDP uses this to reassemble sharded parameters before
+forward/backward.</p>
+<p><img alt="NVIDIA All-Gather illustration" src="https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/_images/allgather.png" /></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>Before:           Operation:         After:
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>GPU 0: [A]                          GPU 0: [A, B, C, D]
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>GPU 1: [B]     ── all-gather ──►    GPU 1: [A, B, C, D]
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>GPU 2: [C]                          GPU 2: [A, B, C, D]
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>GPU 3: [D]                          GPU 3: [A, B, C, D]
+</code></pre></div>
+<h3 id="3-reduce-scatter">3. Reduce-Scatter<a class="headerlink" href="#3-reduce-scatter" title="Permanent link">&para;</a></h3>
+<p>The inverse of all-gather. Reduces (sums) data and <strong>scatters</strong> the
+result so each GPU gets one piece. FSDP uses this after backward to
+produce sharded gradients.</p>
+<p><img alt="NVIDIA Reduce-Scatter illustration" src="https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/_images/reducescatter.png" /></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>Before:                    Operation:              After:
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>GPU 0: [a0, a1, a2, a3]                          GPU 0: [a0+b0+c0+d0]
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>GPU 1: [b0, b1, b2, b3]  ── reduce-scatter ──►   GPU 1: [a1+b1+c1+d1]
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>GPU 2: [c0, c1, c2, c3]      (sum)               GPU 2: [a2+b2+c2+d2]
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>GPU 3: [d0, d1, d2, d3]                          GPU 3: [a3+b3+c3+d3]
+</code></pre></div>
+<p>!!! note: The all-gather + reduce-scatter pair is a powerful pattern for sharding data across GPUs while still allowing for global operations. FSDP uses this pattern to shard parameters and gradients, while TP can use it to shard activations.
+<img alt="FSDP All-Gather illustration" src="https://engineering.fb.com/wp-content/uploads/2021/07/FSDP-graph-2a.png" />
+Image source: Facebook FSDP paper</p>
+<h3 id="4-broadcast">4. Broadcast<a class="headerlink" href="#4-broadcast" title="Permanent link">&para;</a></h3>
+<p>The Broadcast operation copies an N-element buffer from the root rank to all the ranks.
+So one GPU sends its data to all others as shown in the image below....</p>
+<p>Used for syncing initial model weights or distributing hyperparameters.</p>
+<p><img alt="NVIDIA Broadcast illustration" src="https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/_images/broadcast.png" /></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>Before:           Operation:         After:
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>GPU 0: [X]                          GPU 0: [X]
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>GPU 1: [ ]     ── broadcast ──►    GPU 1: [X]
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>GPU 2: [ ]        (from 0)         GPU 2: [X]
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>GPU 3: [ ]                          GPU 3: [X]
+</code></pre></div>
+<h3 id="5-point-to-point-sendrecv">5. Point-to-Point (Send/Recv)<a class="headerlink" href="#5-point-to-point-sendrecv" title="Permanent link">&para;</a></h3>
+<p>Direct communication between two specific GPUs. Pipeline parallelism
+uses this: stage N sends activations to stage N+1.</p>
+<h3 id="6-all-to-all">6. All-to-All<a class="headerlink" href="#6-all-to-all" title="Permanent link">&para;</a></h3>
+<p>In All-to-All, each GPU transmits unique data to every other GPU. To achieve this, each GPU breaks down its data into chunks. Subsequently, each GPU directly sends and receives these chunks to and from every other GPU. Finally, each GPU reconstructs the received data chunks.</p>
+<p><img alt="All-to-All illustration" src="https://miro.medium.com/v2/resize:fit:720/format:webp/1*k7blVUX0r9nb51Kg825Veg.png" /></p>
+<h2 id="hardware-topology-matters">Hardware Topology Matters<a class="headerlink" href="#hardware-topology-matters" title="Permanent link">&para;</a></h2>
+<p>The speed of these collective operations depends entirely on the hardware connecting your GPUs. On virtually all modern supercomputers, <strong>intra-node communication</strong> (GPUs within the same server, connected via NVLink) is orders of magnitude faster than <strong>inter-node communication</strong> (servers connected via network fabrics like InfiniBand or Slingshot). </p>
+<p>This physical reality dictates how you map your distributed strategy to the hardware.</p>
+<p>For example, on NCAR's Derecho system (which has 4× A100 GPUs per node):</p>
+<ul>
+<li><strong>Within a node (High Bandwidth):</strong> Use communication-heavy, latency-sensitive strategies like Tensor Parallelism (TP) or Sequence Parallelism. These require constant, blocking data transfers during the forward and backward passes and must utilize NVLink.</li>
+<li><strong>Across nodes (Lower Bandwidth):</strong> Use bandwidth-efficient strategies like FSDP or DDP. These strategies are designed to hide network latency by overlapping their communication (like gradient synchronization) with the ongoing computation of the backward pass.</li>
+</ul>
+<p>See the <a href="../derecho_guide/">Derecho Guide</a> for full hardware specs.</p>
+<h2 id="hands-on-try-the-primitives">Hands-On: Try the Primitives<a class="headerlink" href="#hands-on-try-the-primitives" title="Permanent link">&para;</a></h2>
+<p>The <code>tests/</code> directory has scripts that let you run these operations
+directly:</p>
+<ul>
+<li><a href="../../tests/all_reduce_test.py"><code>tests/all_reduce_test.py</code></a> — run an all-reduce and verify the result</li>
+<li><a href="../../tests/send_recv_test.py"><code>tests/send_recv_test.py</code></a> — point-to-point communication between ranks</li>
+<li><a href="../../tests/torch_comm_bench.py"><code>tests/torch_comm_bench.py</code></a> — benchmark all-reduce, broadcast, and send/recv at various tensor sizes</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Run on 4 GPUs</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>mpiexec<span class="w"> </span>-n<span class="w"> </span><span class="m">4</span><span class="w"> </span>--ppn<span class="w"> </span><span class="m">4</span><span class="w"> </span>--cpu-bind<span class="w"> </span>none<span class="w"> </span>python<span class="w"> </span>tests/all_reduce_test.py
+</code></pre></div>
+<h2 id="whats-next">What's Next?<a class="headerlink" href="#whats-next" title="Permanent link">&para;</a></h2>
+<p>Now that you understand the communication building blocks, Chapter 4
+puts them to use with the simplest and most common distributed strategy:
+Data Parallel (DDP).</p>
+<p><strong>Next:</strong> <a href="../04_data_parallel_ddp/">Chapter 4 — Data Parallel (DDP)</a></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "content.code.copy", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

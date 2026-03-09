@@ -1,27 +1,22 @@
 # Chapter 10: Domain Parallel
 
-Domain Parallelism is fundamentally different from every other strategy
-in this guide. Instead of splitting the **model**, it splits the **input data
-spatially** — each GPU processes a tile of a large grid, image, or mesh.
+Domain Parallelism (also called spatial parallelism or domain decomposition) distributes different regions of a single input sample across multiple GPUs so they can be processed simultaneously.
 
-This is critical for scientific computing and SciML: climate models, weather
-prediction, computational fluid dynamics, and medical imaging — where the
-input is a high-resolution spatial field that exceeds a single GPU's memory.
+This technique is particularly useful for scientific AI workloads such as weather, climate, and physics simulations where inputs are extremely large multi-dimensional grids.
 
-## Why Scientific AI Memory Is Different
+Instead of giving each GPU a different training sample (as in data parallelism), multiple GPUs cooperate to process one sample. Each GPU handles a different "tile" of the spatial input, and they exchange boundary data ("halos") to ensure correct results at tile edges.
 
-In LLMs, GPU memory is dominated by model parameters (billions of weights).
-In scientific AI, the situation is reversed —> models are often small (a few million parameters), but **activations dominate memory** because the input
-data is spatially massive.
+This is directly inspired by **domain decomposition** methods used in classical numerical weather prediction (NWP) for decades. Models like [WRF](github) have long divided the globe into spatial subdomains, assigning each to a different processor. Domain parallelism brings this same idea to deep learning. To learn about WRF domain decomposition, see [this repo](https://github.com/negin513/wrf-proc-finder).
 
-In scientific AI, the bottleneck is often GPU memory capacity, not compute. You can have a model that runs at 100 TFLOPS but still OOMs because the input data is too large. Domain parallelism addresses this by never coalescing the full input on a single GPU.
+### Why Domain Parallel?
+In LLMs, GPU memory is dominated by model parameters (billions of weights). In scientific AI, the situation is reversed —> models are often small (a few million parameters), but **activations dominate memory** because the input data is spatially massive.
 
 !!! note "What goes on to the GPU memory?"
-    During training, GPU memory is consumed by four things:
-    1. **Model parameters** — small for most scientific models
-    2. **Active data** (inputs/outputs) — large at high resolution
-    3. **Optimizer states** (gradients, moments) — proportional to parameters
-    4. **Intermediate activations** — saved for the backward pass, proportional to *both* model depth and input resolution
+    During training, GPU memory is consumed by four things:   
+    1. **Model parameters** — small for most scientific models   
+    2. **Active data** (inputs/outputs) — large at high resolution    
+    3. **Optimizer states** (gradients, moments) — proportional to parameters   
+    4. **Intermediate activations** — saved for the backward pass, proportional to *both* model depth and input resolution   
 
     As layers stack up, activation memory grows with depth *and* resolution.
     A U-Net on a 1024x1024 grid can easily require 10-100x more activation
@@ -29,42 +24,28 @@ In scientific AI, the bottleneck is often GPU memory capacity, not compute. You 
     enough — they shard parameters and gradients, not activations. Domain
     parallelism is the only strategy that addresses activation memory.
 
+    Also, read [Chapter 1](01_single_gpu_baseline.md#what-goes-on-gpu-memory-vram-in-training) for a detailed breakdown of GPU memory usage.
+
 ## Why Domain Parallel?
 
-Consider a global weather model at 0.25-degree resolution:
+Consider a domain with 1440×1440 grids and 100+ vertical levels. A single forward pass through a model on this grid might need 100+ GB of activation memory, which is far more than a single GPU can hold.
 
-```
-Grid: 1440 × 720 pixels × 100+ vertical levels × multiple variables
+Domain parallelism splits the grid into tiles, each processed by a different GPU. Each GPU only needs to store activations for its tile, reducing memory requirements by 1/N for N GPUs. 
 
-A single forward pass through a U-Net on this grid might need 100+ GB
-of activation memory, which is far more than a single GPU.
-```
+<figure markdown="span">
+  ![Domain decomposition of a geographic grid showing spatial tiles with halo exchange arrows between neighbors](images/domain_decomposition.png){ width="500" }
+  <figcaption>Domain decomposition of a geographic grid into spatial tiles. Red arrows show halo exchange between neighboring subdomains.</figcaption>
+</figure>
 
-Domain parallelism splits the grid:
 
-```
-Full grid (1440 × 720):
+!!! tip "When to use domain parallelism?"
+    Domain parallelism is the best fit when your input is so large that even  `batch_size=1` doesn't fit, and your model uses spatial operations
+     (convolutions, normalizations, attention, pooling).
 
-┌───────────┬───────────┐
-│           │           │
-│  GPU 0    │  GPU 1    │
-│  (720×360)│  (720×360)│
-│           │           │
-├───────────┼───────────┤
-│           │           │
-│  GPU 2    │  GPU 3    │
-│  (720×360)│  (720×360)│
-│           │           │
-└───────────┴───────────┘
 
-Each GPU processes 1/4 of the spatial domain.
-```
+### What is Halo Exchange?
 
-### Why Naive Splitting Fails
-
-But, you can't just slice the grid and run convolutions independently. At tile
-boundaries, convolutions produce incorrect results because they don't have
-access to neighboring pixels:
+A convolution requires a neighborhood of pixels (the stencil) defined by the kernel size $K$. When the domain is sharded, pixels at the boundary lack the data needed for calculation. To resolve this, a "halo" or "ghost zone" is established—an overlapping region synchronized between neighboring processors . Before each convolution, GPUs exchange their boundary data with neighbors so that each GPU has the necessary context to compute correct outputs at tile edges. This communication pattern is called a **halo exchange**.
 
 ```
 Naive split (3×3 convolution):
@@ -124,124 +105,17 @@ torch.allclose(full_output, recombined)  # True!
 
 This manual padding is exactly what **halo exchange** automates across GPUs.
 
-### Halo Exchange
 
-Before each convolution, GPUs exchange a thin border of pixels with their
-neighbors:
+[domain](https://discourse.julialang.org/t/ann-mpihaloarrays-jl/77385)
 
-```
-Step 1: Each GPU adds a "halo" region around its tile
 
-              halo
-          ┌─── ▼ ───┐
-GPU 0:    │ h │ data │ h │     h = halo (received from neighbor)
-          └─────────────┘
+## Practical Implementation
 
-Step 2: Exchange halos with neighbors via point-to-point communication
+### PyTorch's `DTensor` 
+PyTorch DTensor (Distributed Tensor) provides sharding primitives that transparently handle distributed logic using the Single Program, Multiple Data (SPMD) model. It supports Shard(dim), Replicate(), and Partial() placements on a DeviceMesh.
 
-GPU 0          GPU 1          GPU 2          GPU 3
-[data|h] ──► [h|data|h] ──► [h|data|h] ──► [h|data]
-       ◄──          ◄──           ◄──
-
-Step 3: Run convolution on padded tile (including halos)
-
-Step 4: Discard halos, keep only the interior result
-```
-
-The halo width equals the convolution's padding (or receptive field for
-multi-layer blocks). A 3×3 conv needs 1 pixel of halo; a 5×5 conv needs
-2.
-
-```
-2D halo exchange (4 GPUs in a 2×2 grid):
-
-         ┌──────────────┬──────────────┐
-         │    GPU 0     │    GPU 1     │
-         │              │              │
-         │         ◄───►│              │  ← horizontal halo
-         │    ▲         │    ▲         │
-         │    │         │    │         │
-         ├────┼─────────┼────┼─────────┤
-         │    ▼         │    ▼         │  ← vertical halo
-         │              │              │
-         │         ◄───►│              │
-         │    GPU 2     │    GPU 3     │
-         └──────────────┴──────────────┘
-
-Each GPU exchanges halos with up to 4 neighbors (N, S, E, W).
-Corner halos can be handled with diagonal exchanges or two rounds.
-```
-
-Gradients also require communication across the split boundary during
-`backward()`. This adds overhead, but the memory savings from never
-coalescing the full tensor on a single GPU make it worthwhile.
-
-## GroupNorm Instead of BatchNorm
-
-BatchNorm computes statistics across the batch dimension, which requires
-communication across all GPUs. For domain parallelism, use **GroupNorm**
-instead — it computes statistics within each sample independently:
-
-```
-BatchNorm: mean/var across batch → needs all-reduce across GPUs
-GroupNorm: mean/var within groups of channels → fully local
-```
-
-This avoids a costly all-reduce at every normalization layer.
-
-## Domain Parallel vs. Other Approaches
-
-Domain parallelism isn't the only way to handle large inputs. Here's how
-the alternatives compare:
-
-| Approach | What it does | Strengths | Limitations |
-|----------|-------------|-----------|-------------|
-| **Domain Parallel** | Splits spatial input across GPUs | Scales both memory and compute; works with complex architectures (U-Net) | Halo communication overhead per layer |
-| **Pipeline Parallel** | Splits model layers across GPUs | Low communication (only between stages) | Pipeline bubble; GPUs idle while waiting; hard for skip connections (U-Net) |
-| **Activation Checkpointing** | Offloads activations to CPU, recomputes during backward | No code changes to model; works with DDP | Limited by CPU-GPU bandwidth; recompute cost |
-| **DDP** | Replicates model, splits batch | Simple; high throughput | Doesn't help if `batch_size=1` already OOMs |
-
-**Pipeline parallelism** divides the model by layers — GPU 0 runs layers
-0-9, GPU 1 runs layers 10-19, etc. It scales GPU memory, but not compute:
-while GPU 0 is active, other GPUs wait. It also doesn't work well for
-architectures with skip connections (like U-Net) where concatenation spans
-the down/up sampling paths.
-
-**Activation checkpointing** moves intermediate activations from GPU to CPU
-during the forward pass and restores them during backward. It can be limited
-by CPU-GPU transfer speeds and doesn't scale compute across GPUs.
-
-Domain parallelism is the best fit when your input is so large that even
-`batch_size=1` doesn't fit, and your model uses spatial operations
-(convolutions, normalizations, attention, pooling).
-
-> If your model comfortably fits `batch_size=1` training, DDP will be
-> more efficient. Domain parallelism shines when the data is the bottleneck,
-> not the model.
-
-## Combining Domain Parallel with FSDP
-
-For large models on large grids, you can combine domain parallelism with
-FSDP using a 2D mesh:
-
-```
-2D mesh: [FSDP × Domain]
-
-4 nodes × 4 GPUs = 16 GPUs
-
-FSDP groups (model sharding):
-  [0, 4, 8, 12]  [1, 5, 9, 13]  [2, 6, 10, 14]  [3, 7, 11, 15]
-
-Domain groups (spatial splitting):
-  [0, 1, 2, 3]  [4, 5, 6, 7]  [8, 9, 10, 11]  [12, 13, 14, 15]
-```
-
-Each domain group handles a different spatial tile, while FSDP shards
-the model parameters across domain groups.
-
-## ShardTensor: Production Domain Parallelism
-
-For production workloads, NVIDIA's
+#### Option B: NVIDIA PhysicsNeMo ShardTensor (Recommended)
+PhysicsNeMo introduces ShardTensor, which extends DTensor by tracking the shape of each local tensor along sharding axes . This is critical for uneven sharding in irregular domains like point clouds or non-rectangular grids. It intercepts operations at the functional level to route local computations and trigger necessary communication .
 [ShardTensor](https://docs.nvidia.com/physicsnemo/user-guide/latest/physicsnemo-distributed/domain-parallelism/shard-tensor.html)
 (built on PyTorch's DTensor) automates what we did manually above.
 Instead of hand-coding halo exchanges and gradient communication:
@@ -268,14 +142,44 @@ Domain parallelism with ShardTensor performs best when:
 - GPU kernels are **large** (big input data) — the communication-to-compute ratio stays small
 - GPU kernels are **non-blocking** — the slightly higher overhead of domain parallelism still fills the GPU queue efficiently
 
-For small kernels or latency-bound models, pipeline parallelism or
-activation checkpointing may be more efficient.
 
-**Further reading:**
+Supported layers include convolutions, normalizations, upsampling/pooling, and attention layers. ShardTensor intercepts operations at the dispatch level and inserts the necessary communication.
 
-- [Domain Parallelism and ShardTensor](https://docs.nvidia.com/physicsnemo/user-guide/latest/physicsnemo-distributed/domain-parallelism/shard-tensor.html)
-- [Implementing New Layers for ShardTensor](https://docs.nvidia.com/physicsnemo/user-guide/latest/physicsnemo-distributed/domain-parallelism/implementing-new-layers.html)
-- [Domain Decomposition, ShardTensor, and FSDP Tutorial](https://docs.nvidia.com/physicsnemo/user-guide/latest/physicsnemo-distributed/domain-parallelism/fsdp-and-shard-tensor.html)
+
+PhysicsNeMo provides `ShardTensor`, a high-level abstraction built on PyTorch's `DTensor` that handles domain parallelism with minimal code changes:
+```python
+import torch
+import torch.nn as nn
+from physicsnemo.distributed import DistributedManager
+from physicsnemo.distributed.shard_tensor import ShardTensor
+from torch.distributed.device_mesh import init_device_mesh
+
+# Initialize distributed
+DistributedManager.initialize()
+dm = DistributedManager()
+
+# Create a 2D device mesh: [data_parallel, domain_parallel]
+# e.g., 8 GPUs total = 2 data-parallel × 4 domain-parallel
+mesh = init_device_mesh("cuda", (2, 4), mesh_dim_names=("dp", "spatial"))
+
+# Your model — no modifications needed if using supported layers
+model = MyWeatherModel()
+
+# Distribute input: shard along the latitude dimension
+# ShardTensor handles halo exchanges automatically for supported ops
+input_tensor = torch.randn(1, 73, 721, 1440, device="cuda")
+sharded_input = ShardTensor.from_local(
+    input_tensor.chunk(4, dim=-2)[dm.rank % 4],  # split lat dim
+    device_mesh=mesh["spatial"],
+)
+
+# Forward pass — halo exchanges happen automatically
+output = model(sharded_input)
+```
+
+
+To learn more about ShardTensor and domain parallelism, see the [NVIDIA PhysicsNeMo docs](https://docs.nvidia.com/physicsnemo/user-guide/latest/physicsnemo-distributed/domain-parallelism/shard-tensor.html) and the [domain parallel + FSDP tutorial](https://docs.nvidia.com/physicsnemo/user-guide/latest/physicsnemo-distributed/domain-parallelism/fsdp-and-shard-tensor.html).
+
 
 ## Running the Examples
 
@@ -299,10 +203,12 @@ torchrun --standalone --nproc_per_node=4 \
     scripts/07_domain_parallel_shardtensor/04_domain_parallel_with_fsdp.py
 ```
 
-**See also:**
-- [`scripts/07_domain_parallel_shardtensor/01_why_splitting_fails.py`](../../scripts/07_domain_parallel_shardtensor/01_why_splitting_fails.py) — start here to see the boundary problem
-- [`scripts/07_domain_parallel_shardtensor/04_domain_parallel_with_fsdp.py`](../../scripts/07_domain_parallel_shardtensor/04_domain_parallel_with_fsdp.py) — production pattern with FSDP
-- [`scripts/07_domain_parallel_shardtensor/README.md`](../../scripts/07_domain_parallel_shardtensor/README.md) — deep dive on domain parallelism
+
+## Further reading:
+
+- [Domain Parallelism and ShardTensor](https://docs.nvidia.com/physicsnemo/user-guide/latest/physicsnemo-distributed/domain-parallelism/shard-tensor.html)
+- [Implementing New Layers for ShardTensor](https://docs.nvidia.com/physicsnemo/user-guide/latest/physicsnemo-distributed/domain-parallelism/implementing-new-layers.html)
+- [Domain Decomposition, ShardTensor, and FSDP Tutorial](https://docs.nvidia.com/physicsnemo/user-guide/latest/physicsnemo-distributed/domain-parallelism/fsdp-and-shard-tensor.html)
 
 ## What's Next?
 

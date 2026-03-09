@@ -148,14 +148,14 @@ dist.init_process_group(backend="nccl")  # all ranks join
 dist.all_reduce(tensor)  # works across all ranks
 ```
 
-Sometimes you need only **some ranks** to communicate. This is common in hybrid parallelism (e.g., FSDP within nodes, DDP across nodes).
-In that case, you create custom process groups.
+Sometimes you need only some ranks to communicate. This is common in hybrid parallelism (e.g., FSDP within nodes, DDP across nodes). In that case, you create **subgroups**:
 
-```
-World group:  [0, 1, 2, 3, 4, 5, 6, 7]
+```python
+# Create a subgroup for ranks 0-3 (e.g., for TP within nodee 1)
+tp_group = dist.new_group(ranks=[0, 1, 2, 3])
 
-TP groups:    [0, 1, 2, 3]  [4, 5, 6, 7]    (intra-node)
-FSDP groups:  [0, 4]  [1, 5]  [2, 6]  [3, 7]  (inter-node)
+# Create a subgroup for ranks 4-7 (e.g., for TP within node 2)
+tp_group_2 = dist.new_group(ranks=[4, 5, 6, 7])
 ```
 
 
@@ -263,31 +263,14 @@ In All-to-All, each GPU transmits unique data to every other GPU. To achieve thi
 
 ## Hardware Topology Matters
 
-The speed of these operations depends on the hardware connecting your GPUs — both within a node and across nodes. On some clusters, intra-node communication (e.g., NVLink) is much faster than inter-node (e.g., Ethernet using TCP/IP). 
+The speed of these collective operations depends entirely on the hardware connecting your GPUs. On virtually all modern supercomputers, **intra-node communication** (GPUs within the same server, connected via NVLink) is orders of magnitude faster than **inter-node communication** (servers connected via network fabrics like InfiniBand or Slingshot). 
 
-```
-Derecho Topology:
-┌─────────────────────────────────┐
-│ Node (4× A100, NVLink 600 GB/s) │
-│                                 │
-│  GPU 0 ←NVLink→ GPU 1           │
-│    ↕               ↕            │
-│  GPU 2 ←NVLink→ GPU 3           │
-│                                 │
-└──────────────┬──────────────────┘
-               │ Slingshot 11
-               │
-┌──────────────┴──────────────────┐
-│ Node (4× A100, NVLink 600 GB/s) │
-│  ...                            │
-└─────────────────────────────────┘
-```
+This physical reality dictates how you map your distributed strategy to the hardware.
 
-On Derecho, the 4 A100 GPUs within each node are connected via NVLink
-(600 GB/s), making intra-node communication much faster than inter-node
-Slingshot. The practical consequence: keep communication-heavy strategies
-(TP) within a single node, and use bandwidth-efficient strategies (FSDP,
-DDP) across nodes.
+For example, on NCAR's Derecho system (which has 4× A100 GPUs per node):
+
+* **Within a node (High Bandwidth):** Use communication-heavy, latency-sensitive strategies like Tensor Parallelism (TP) or Sequence Parallelism. These require constant, blocking data transfers during the forward and backward passes and must utilize NVLink.
+* **Across nodes (Lower Bandwidth):** Use bandwidth-efficient strategies like FSDP or DDP. These strategies are designed to hide network latency by overlapping their communication (like gradient synchronization) with the ongoing computation of the backward pass.
 
 See the [Derecho Guide](derecho_guide.md) for full hardware specs.
 

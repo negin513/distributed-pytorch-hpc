@@ -7,11 +7,12 @@ Before we distribute anything, we need a solid single-GPU training script to ser
 Here's a minimal but complete training loop — a simple U-Net predicting weather on ERA5-like data. We use U-Net here because it's familiar and keeps the focus on distributed training concepts.
 
 > **Note:** State-of-the-art weather models use specialized architectures better suited for global, spherical data:
-> - **GraphCast**: Graph Neural Networks on icosahedral mesh
-> - **Pangu-Weather**: 3D Swin Transformers
-> - **FourCastNet**: Adaptive Fourier Neural Operators (AFNO)
-> - **GenCast**: Diffusion models
-> - **ClimaX / Aurora**: Vision Transformers
+> - **GraphCast**: Graph Neural Networks on icosahedral mesh 
+> - **Pangu-Weather**: 3D Swin Transformers 
+> - **FourCastNet v1**: Adaptive Fourier Neural Operators (AFNO)
+> - **FourCastNet v2/3**: Spherical Fourier Neural Operators (SFNO)
+> - **GenCast**: Diffusion models 
+> - **Aurora**: 3D Swin Transformer 
 >
 > The distributed training patterns you learn here apply to all of these.
 
@@ -173,9 +174,10 @@ for epoch in range(10):
     print(f"Epoch {epoch+1} | Loss: {avg_loss:.6f}")
 ```
 
-## What Goes on GPU Memory (VRAM)?
+## What Goes on GPU Memory (VRAM) in Training?
+When training a deep learning model, the GPU memory (VRAM) acts as a high-speed workspace where several distinct components must coexist. If the total memory required by these components exceeds your VRAM capacity, you will encounter the **CUDA Out of Memory (OOM)** error.
 
-During training, four things compete for your GPU's memory:
+During training, four specific components compete for your GPU's memory:
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                  GPU Memory (80 GB A100)                    │
@@ -204,78 +206,75 @@ During training, four things compete for your GPU's memory:
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Why Weather/Climate Models Are Memory-Hungry
+### Why Weather/Climate AI Models Are Memory-Hungry
 
-Unlike image classification (224×224 pixels), weather models operate on global grids:
+Weather and climate AI models are significantly more memory-intensive than most deep learning models used in computer vision or natural language processing. This is because the atmosphere and Earth system are high-dimensional physical systems that must be represented across space, vertical structure, multiple physical variables, and time. Together, these factors produce extremely large tensors and intermediate activations during training and inference.
 
-| Resolution | Grid Size | Channels | Single Sample (FP32) |
-|------------|-----------|----------|----------------------|
-| 1.0° | 181 × 360 | 65 | ~17 MB |
-| 0.25° | 721 × 1440 | 65 | ~270 MB |
-| 0.1° | 1801 × 3600 | 65 | ~1.7 GB |
+- To capture fine-scale weather features, models often use high-resolution grids. For example, ERA5 reanalysis data at 0.25° resolution has a grid of 721 latitudes × 1440 longitudes, resulting in over 1 million spatial points per variable per level. 
 
-A single 0.25° sample is **270 MB** — compare that to a 224×224 ImageNet sample at **~600 KB**. That's a **450× difference**.
+- The atmosphere must be modeled in the vertical dimension as well. For example, ERA5 resolves the atmosphere with up to 137 vertical levels from the surface to ~80 km, making atmospheric data inherently three-dimensional.
 
-### Weather/Climate Model Memory Requirements
+- Instead of just 3 channels like RGB images, weather models often include dozens of physical variables such as temperature, pressure, humidity, wind components, and geopotential height. Some atmospheric datasets include **tens of variables across multiple pressure levels**, further increasing tensor size.
 
-| Model | Parameters | Architecture | Memory (FP32, AdamW) | Fits on 80 GB A100? |
-|-------|-----------|--------------|----------------------|---------------------|
-| Simple U-Net | 100M | CNN | ~5 GB | ✅ Yes |
-| FourCastNet | 100M | AFNO | ~15 GB | ✅ Yes |
-| Pangu-Weather | 200M | 3D Swin Transformer | ~40 GB | ⚠️ Tight |
-| GraphCast | 37M | Graph Neural Network | ~30 GB | ✅ Yes (large activations) |
-| ClimaX | 100M | Vision Transformer | ~25 GB | ✅ Yes |
-| GenCast | 500M | Diffusion Model | ~60 GB | ⚠️ Tight |
-| Aurora | 1.3B | Foundation Model | ~100 GB | ❌ No |
+- Forecasting models typically ingest multiple past timesteps to learn atmospheric dynamics, introducing an additional **time dimension**.
 
-The memory formula for training (FP32 with AdamW):
+Together, these factors produce extremely large input tensors, often with dimensions like:
 ```
-Memory ≈ 4 × params              (model weights)
-       + 4 × params              (gradients)
-       + 8 × params              (AdamW: momentum + variance)
-       + activations             (HUGE for high-res spatial data)
-       ≈ 16 × params + activations
-
-For weather models, activations often DOMINATE:
-  Activations ∝ batch_size × channels × height × width × network_depth
+[batch, time, variables, levels, lat, lon]
 ```
+
+For example, a single input sample of ERA-5 at 0.25° resolution with 5 variables at 13 pressure levels and 8 surface variables would have, sample size of:
+
+| Dimension        | Size    | Notes                                |
+|------------------|---------|--------------------------------------|
+| Latitude         | 721     |       |
+| Longitude        | 1440    |     |
+| Pressure levels  | 13     |  subset of pressure levels |
+| Variables/level  | 5       | T, u, v, z, q                        |
+| Surface variables| 8       | t2m, u10, v10, msl, tcwv, …         |
+| **Total channels** | **73** | (13 levels × 5 vars) + 8 surface    |
+
+```
+Single input state:  73 × 721 × 1440 = ~75.8 million values
+In float32:          75.8M × 4 bytes  ≈ 303 MB per sample
+```
+This 303 MB is just the input. During training, neural networks must also store intermediate activations for every layer so that gradients can be computed during backpropagation. These activations are often significantly larger than the input tensor itself, especially in deep convolutional or transformer-based architectures.
+
+
+#### Activations Are the Real Memory Bottleneck
+During training, the GPU must store the output of every intermediate layer (activations) to calculate gradients during the backward pass.
+
+- **Intermediate layer activations** expand the channel dimension significantly. If your model has a hidden dimension of 512 (common in Transformers or Graph Neural Networks), that 303MB input expands to 303 MB × (512/73) ≈ 2.1 GB per layer. With 10 layers, that's already 21 GB of activations.
+
+- **Autoregressive rollouts** multiply the problem further. Weather models are trained to predict multiple future timesteps (e.g., 4 steps × 6h = 24h). To backpropagate through the full rollout, activations from *every step* must be retained in memory, multiplying total activation memory by the rollout length.
+
+- **Spectral transforms** in models like FourCastNet v2/v3 compute spherical harmonic transformsat each layer, producing full spectral coefficient tensors that add further overhead on top of the spatial activations.
+
+- **Attention mechanisms** in transformer-based models (Pangu-Weather, Aurora) store attention maps that scale quadratically with sequence length. On a 721 × 1440 grid, even windowed attention (e.g., 3D Swin Transformer) generates substantial intermediate tensors.
+
+To put this in perspective:
+```
+Input:                     ~303 MB per sample
+Activations (single step): ~20 GB per sample (depending on architecture)
+With 4-step rollout:       ~80  GB per sample
+```
+
+!!! tip "In Geoscientific AI, activations -- not model parameters -- are the bottleneck. You can have a "small" model (low parameter count) that is still impossible to train on a single GPU because the spatial activations are too massive to fit in VRAM."
+
 
 ## The Three Walls
-
-
-
-
 At some point, your single-GPU training hits one of three limits:
 
 ### Wall 1: Training Too Slow
-
-Your model fits single GPU memory, but training takes weeks and you cannot increase batch sizes because you hit OOM. 
-
-Weather reanalysis datasets are massive:
-
-| Dataset | Time Range | Resolution | Approx. Size |
-|---------|------------|------------|--------------|
-| ERA5 | 1940–present | 0.25° hourly | ~5 PB |
-| MERRA-2 | 1980–present | 0.5° hourly | ~500 TB |
-| CMIP6 | Varies | Varies | ~20 PB |
-| GFS Analysis | 2004–present | 0.25° 6-hourly | ~100 TB |
-
-Training on 40+ years of hourly data with one GPU would take months.
-
+Your model fits on one GPU, but training on 40 years of ERA5 (approx. 5 Petabytes) would take months and you cannot increase batch sizes because you hit OOM. 
 **Solution:** Split data across GPUs and train in parallel (DDP).
 
 ### Wall 2: Data Too Large (Spatial)
-
-Your input data is too large for a single GPU — this is especially common in weather/climate.
-A single 0.1° global sample won't even fit in memory!
-
-**Solution:** Split the input spatially across GPUs.
+Your input data is too large for a single GPU -- this is especially common in weather/climate. For example, a single 0.1° global sample won't even fit in memory!
+**Solution:** Split the input data spatially across GPUs (Domain Parallelism).
 
 ### Wall 3: Model Too Large
-
-Your model's parameters + gradients + optimizer state exceed GPU memory. Large foundation models for weather (Aurora, Prithvi) or hybrid physics-ML models (NeuralGCM) can exceed even 80 GB A100s.
-
-In this case, shard the model across GPUs (FSDP, Tensor Parallelism, Pipeline Parallelism) or use memory-efficient techniques like gradient checkpointing.
+Your model's parameters + gradients + optimizer state exceed GPU memory. Large foundation models for weather (Aurora, Prithvi) or hybrid physics-ML models (NeuralGCM) can exceed even 80 GB A100s. In this case, shard the model across GPUs (FSDP, Tensor Parallelism, Pipeline Parallelism) or use memory-efficient techniques like gradient checkpointing.
 
 
 ## Other Weather/Climate Specific Considerations
@@ -290,8 +289,8 @@ def latitude_weighted_mse(pred, target, lat):
 ```
 
 ### Temporal Autoregressive Rollout
-
 Weather models are often trained autoregressively — the model's prediction at t+6h becomes the input for t+12h:
+
 ```python
 # Autoregressive training (simplified)
 state = initial_state
@@ -301,29 +300,15 @@ for step in range(num_steps):
     state = next_state  # Use prediction as next input
 ```
 
-This compounds memory requirements and requires careful gradient handling.
-
 ### Physical Constraints
 
-Weather/climate models often need to:
-- **Conserve mass/energy**: Predictions shouldn't create or destroy atmospheric mass
-- **Respect boundaries**: Periodic in longitude, bounded at poles
-- **Maintain consistency**: Pressure, temperature, and density must satisfy physical relationships
+Unlike general AI, weather models often must satisfy physical laws:
+
+* **Conservation:** Mass and energy should not be "created" by the network.
+* **Periodic Boundaries:** The model must understand that the far-right of the grid (longitude) connects back to the far-left.
 
 ## What's Next?
 
 Before jumping into code changes, Chapter 2 gives you the conceptual map of all distributed strategies — what each one splits and when to use it.
 
 **Next:** [Chapter 2 — Why Distributed?](02_why_distributed.md)
-
----
-
-## Summary
-
-| Concept | Single-GPU Baseline |
-|---------|---------------------|
-| Model | Simple U-Net (for pedagogical clarity) |
-| Data | ERA5-like atmospheric state (variables × levels × lat × lon) |
-| Memory bottleneck | Activations (due to large spatial dimensions) |
-| Loss function | Latitude-weighted MSE |
-| Key challenge | High-resolution grids + many channels = massive memory |

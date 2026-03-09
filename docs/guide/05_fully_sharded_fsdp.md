@@ -1,37 +1,23 @@
 # Chapter 5: Fully Sharded Data Parallel (FSDP)
 
-DDP keeps a full copy of the model on every GPU. That works until your
-model is too large for one GPU's memory. FSDP solves this by **sharding**
-parameters, gradients, and optimizer state across GPUs — each GPU only
-stores 1/N of everything.
+PyTorch Fully Sharded Data Parallel (FSDP) speeds up model training by parallelizing training data and sharding model parameters, optimizer states, and gradients across multiple GPUs.
 
-## The Problem with DDP
+If your model does not fit on a single GPU, you can use FSDP and request more GPUs to reduce the memory footprint on each GPU. The model parameters are split between the GPUs and each training process receives a different subset of training data. Model updates from each device are broadcast across devices, resulting in the same model on all devices.
 
-With DDP and 4 GPUs, you have 4 complete copies of the model:
+For a complete overview with examples, see the [PyTorch FSDP Tutorial](https://pytorch.org/tutorials/intermediate/fsdp_tutorial.html).
 
-```
-DDP with 4 GPUs (7B model, FP32 + Adam):
+![FSDP Architecture](https://miro.medium.com/v2/resize:fit:720/format:webp/1*WXLdGH09JN_RrtcvApQJEw.png)
 
-GPU 0: [full model 112 GB]  ← doesn't fit on 40 GB A100
-GPU 1: [full model 112 GB]
-GPU 2: [full model 112 GB]
-GPU 3: [full model 112 GB]
-
-Total memory used: 4 × 112 GB = 448 GB
-Unique data: 112 GB
-Redundancy: 4×
-```
-
-FSDP eliminates this redundancy.
 
 ## How FSDP Works
 
-FSDP shards parameters across GPUs. Each GPU only stores its 1/N shard.
-When a layer needs the full parameters (for forward or backward), FSDP
-temporarily gathers them, uses them, and discards the non-local parts.
+FSDP shards model parameters across GPUs so that each GPU stores only 1/N of the model, where N is the number of GPUs.
 
-```
-FSDP Lifecycle (4 GPUs):
+During training, parameters temporarily transition between two states:
+* Sharded state – parameters are split across GPUs (memory efficient)
+* Unsharded state – full parameters are reconstructed for computation
+
+Here is the high-level lifecycle of a parameter shard during training with 4 GPUs:
 
 1. At rest — each GPU holds 1/4 of params:
    GPU 0: [shard 0]
@@ -42,39 +28,50 @@ FSDP Lifecycle (4 GPUs):
 2. Before forward — all-gather to reconstruct full params:
    GPU 0: [shard 0 | shard 1 | shard 2 | shard 3]  (temporary)
    GPU 1: [shard 0 | shard 1 | shard 2 | shard 3]  (temporary)
-   ...
+   GPU 2: [shard 0 | shard 1 | shard 2 | shard 3]  (temporary)
+   GPU 3: [shard 0 | shard 1 | shard 2 | shard 3]  (temporary)
 
 3. Compute forward pass (using full params)
 
 4. After forward — discard non-local shards:
    GPU 0: [shard 0]  (back to 1/4)
+   GPU 1: [shard 1]  (back to 1/4)
+   GPU 2: [shard 2]  (back to 1/4)
+   GPU 3: [shard 3]  (back to 1/4)
 
 5. Before backward — all-gather again
 
 6. After backward — reduce-scatter gradients:
    GPU 0: [grad shard 0]  (already reduced + sharded)
+   GPU 1: [grad shard 1]  (already reduced + sharded)
+   GPU 2: [grad shard 2]  (already reduced + sharded)
+   GPU 3: [grad shard 3]  (already reduced + sharded)
 
 7. Optimizer step — each GPU updates only its shard
+
+In pseudo-code:
 ```
+FSDP forward pass:
+    for layer_i in layers:
+        all-gather full weights for layer_i
+        forward pass for layer_i
+        discard full weights for layer_i
 
-### Memory comparison
-
+FSDP backward pass:
+    for layer_i in layers:
+        all-gather full weights for layer_i
+        backward pass for layer_i
+        discard full weights for layer_i
+        reduce-scatter gradients for layer_i
 ```
-FSDP with 4 GPUs (7B model, FP32 + Adam):
+Instead of DDP's all-reduce, FSDP uses all-gather and reduce-scatter to shard parameters and gradients. This allows you to train much larger models that don't fit in memory, at the cost of more communication overhead compared to DDP.
 
-GPU 0: [1/4 model ≈ 28 GB]  ← fits on 40 GB A100!
-GPU 1: [1/4 model ≈ 28 GB]
-GPU 2: [1/4 model ≈ 28 GB]
-GPU 3: [1/4 model ≈ 28 GB]
+[all-reduce](https://engineering.fb.com/wp-content/uploads/2021/07/FSDP-graph-2a.png)
 
-Total memory used: 4 × 28 GB = 112 GB
-Unique data: 112 GB
-Redundancy: 1× (none!)
-```
 
 ## From DDP to FSDP
 
-The code change is small. Replace `DDP(model)` with `FSDP(model)` and
+Migrating from DDP to FSDP usually requires minimal code changes. Replace `DDP(model)` with `FSDP(model)` and
 add a wrapping policy:
 
 ```python
@@ -147,9 +144,8 @@ sent during all-gather and reduce-scatter.
 
 ## Wrapping Policies
 
-FSDP doesn't shard the model as a single unit — it wraps **sub-modules**
-individually. The wrapping policy determines which modules get their own
-FSDP wrapper:
+FSDP doesn't shard the model as a single giant unit. If it did, the all-gather step would reconstruct the entire model at once, immediately causing an Out-Of-Memory error! Instead, it wraps sub-modules individually so memory is only spiked layer-by-layer.
+
 
 ### Size-based (simple)
 
@@ -163,7 +159,7 @@ auto_wrap_policy = functools.partial(
 
 ### Module-type based (precise)
 
-Wrap specific module types (common for transformers):
+Wrap specific architectural blocks. This is standard practice for Transformer-based weather models (like Pangu-Weather or Aurora). You want to wrap at the Transformer Block level.
 
 ```python
 from torch.distributed.fsdp.wrap import ModuleWrapPolicy
@@ -175,17 +171,27 @@ auto_wrap_policy = ModuleWrapPolicy({TransformerBlock})
 Wrapping at the right granularity matters: too coarse and you lose
 sharding benefit; too fine and communication overhead dominates.
 
-## FSDP vs DDP: When to Switch
+## The Checkpointing Caveat
+Because each GPU only holds a fraction of the weights, you cannot simply call `torch.save(model.state_dict(), "model.pt")`. In that case, you will only save 1/N of the model!
 
-| Situation | Recommendation |
-|-----------|---------------|
-| Model fits on 1 GPU | Use DDP (simpler, faster) |
-| Model fits but training is slow | Use DDP with more GPUs |
-| Optimizer state doesn't fit | Try `SHARD_GRAD_OP` |
-| Model doesn't fit on 1 GPU | Use `FULL_SHARD` |
-| Model doesn't fit across all GPUs | Add TP (Chapter 6) or PP (Chapter 7) |
+You must tell FSDP to gather the model before saving:
 
-## Running the Example
+```
+from torch.distributed.fsdp import FullStateDictConfig
+from torch.distributed.fsdp import StateDictType
+
+# Configure FSDP to gather weights to CPU (to avoid GPU OOM)
+save_policy = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
+
+with FSDP.state_dict_type(model, StateDictType.FULL_STATE_DICT, save_policy):
+    cpu_state_dict = model.state_dict()
+
+if local_rank == 0:
+    torch.save(cpu_state_dict, "full_weather_model.pt")
+
+```
+
+## Running the Examples
 
 ```bash
 # Single node, 4 GPUs
@@ -206,8 +212,6 @@ qsub scripts/02_fully_sharded_fsdp/run_fsdp.sh
 
 ## What's Next?
 
-FSDP shards entire parameters across all GPUs. But what if a single
-layer's weight matrix is too large? Tensor Parallelism splits individual
-layers across GPUs.
+FSDP shards entire parameters across all GPUs layer-by-layer. But what if a single layer's weight matrix is so massively wide that even gathering it temporarily causes an OOM? Tensor Parallelism solves this by splitting the actual matrix multiplication across GPUs.
 
 **Next:** [Chapter 6 — Tensor Parallel](06_tensor_parallel.md)

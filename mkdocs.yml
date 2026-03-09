@@ -59,7 +59,7 @@ nav:
     - 8. Sequence Parallel: guide/08_sequence_parallel.md
     - 9. Hybrid Parallelism: guide/09_hybrid_parallelism.md
     - 10. Domain Parallel: guide/10_domain_parallel.md
-    - 11. Choosing a Strategy: guide/11_choosing_a_strategy.md
+    #- 11. Choosing a Strategy: guide/11_choosing_a_strategy.md
     - 12. HPC Operations: guide/12_hpc_operations.md
   - Reference:
     - Derecho Guide: guide/derecho_guide.md

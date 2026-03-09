@@ -8,8 +8,9 @@ Instead of giving each GPU a different training sample (as in data parallelism),
 
 This is directly inspired by **domain decomposition** methods used in classical numerical weather prediction (NWP) for decades. Models like [WRF](github) have long divided the globe into spatial subdomains, assigning each to a different processor. Domain parallelism brings this same idea to deep learning. To learn about WRF domain decomposition, see [this repo](https://github.com/negin513/wrf-proc-finder).
 
-### Why Domain Parallel?
-In LLMs, GPU memory is dominated by model parameters (billions of weights). In scientific AI, the situation is reversed —> models are often small (a few million parameters), but **activations dominate memory** because the input data is spatially massive.
+## Why Domain Parallel?
+
+In LLMs, GPU memory is dominated by model parameters (billions of weights). In scientific AI, the situation is reversed — models are often small (a few million parameters), but **activations dominate memory** because the input data is spatially massive.
 
 !!! note "What goes on to the GPU memory?"
     During training, GPU memory is consumed by four things:   
@@ -26,8 +27,6 @@ In LLMs, GPU memory is dominated by model parameters (billions of weights). In s
 
     Also, read [Chapter 1](01_single_gpu_baseline.md#what-goes-on-gpu-memory-vram-in-training) for a detailed breakdown of GPU memory usage.
 
-## Why Domain Parallel?
-
 Consider a domain with 1440×1440 grids and 100+ vertical levels. A single forward pass through a model on this grid might need 100+ GB of activation memory, which is far more than a single GPU can hold.
 
 Domain parallelism splits the grid into tiles, each processed by a different GPU. Each GPU only needs to store activations for its tile, reducing memory requirements by 1/N for N GPUs. 
@@ -43,9 +42,9 @@ Domain parallelism splits the grid into tiles, each processed by a different GPU
      (convolutions, normalizations, attention, pooling).
 
 
-### What is Halo Exchange?
+## What is Halo Exchange?
 
-A convolution requires a neighborhood of pixels (the stencil) defined by the kernel size $K$. When the domain is sharded, pixels at the boundary lack the data needed for calculation. To resolve this, a "halo" or "ghost zone" is established—an overlapping region synchronized between neighboring processors . Before each convolution, GPUs exchange their boundary data with neighbors so that each GPU has the necessary context to compute correct outputs at tile edges. This communication pattern is called a **halo exchange**.
+A convolution requires a neighborhood of pixels (the stencil) defined by the kernel size $K$. When the domain is sharded, pixels at the boundary lack the data needed for calculation. To resolve this, a "halo" or "ghost zone" is established—an overlapping region synchronized between neighboring processors. Before each convolution, GPUs exchange their boundary data with neighbors so that each GPU has the necessary context to compute correct outputs at tile edges. This communication pattern is called a **halo exchange**.
 
 ```
 Naive split (3×3 convolution):
@@ -105,80 +104,46 @@ torch.allclose(full_output, recombined)  # True!
 
 This manual padding is exactly what **halo exchange** automates across GPUs.
 
-
-[domain](https://discourse.julialang.org/t/ann-mpihaloarrays-jl/77385)
+[For a Julia-based example of halo arrays, see MPIHaloArrays.jl.](https://discourse.julialang.org/t/ann-mpihaloarrays-jl/77385)
 
 
 ## Practical Implementation
 
-### PyTorch's `DTensor` 
-PyTorch DTensor (Distributed Tensor) provides sharding primitives that transparently handle distributed logic using the Single Program, Multiple Data (SPMD) model. It supports Shard(dim), Replicate(), and Partial() placements on a DeviceMesh.
+### Option A: PyTorch's `DTensor`
 
-#### Option B: NVIDIA PhysicsNeMo ShardTensor (Recommended)
-PhysicsNeMo introduces ShardTensor, which extends DTensor by tracking the shape of each local tensor along sharding axes . This is critical for uneven sharding in irregular domains like point clouds or non-rectangular grids. It intercepts operations at the functional level to route local computations and trigger necessary communication .
-[ShardTensor](https://docs.nvidia.com/physicsnemo/user-guide/latest/physicsnemo-distributed/domain-parallelism/shard-tensor.html)
-(built on PyTorch's DTensor) automates what we did manually above.
-Instead of hand-coding halo exchanges and gradient communication:
+PyTorch `DTensor` (Distributed Tensor) provides sharding primitives that transparently handle distributed logic using the Single Program, Multiple Data (SPMD) model. It supports `Shard(dim)`, `Replicate()`, and `Partial()` placements on a `DeviceMesh`.
+
+`DTensor` works well for uniform sharding across regular grids, but it assumes each shard has the same shape (via `torch.chunk`). This makes it less suited for irregular domains like point clouds or non-rectangular meshes.
+
+### Option B: NVIDIA PhysicsNeMo `ShardTensor` (Recommended)
+
+PhysicsNeMo provides [`ShardTensor`](https://docs.nvidia.com/physicsnemo/user-guide/latest/physicsnemo-distributed/domain-parallelism/shard-tensor.html), a high-level abstraction built on PyTorch's `DTensor` that automates what we did manually above. Instead of hand-coding halo exchanges and gradient communication, `ShardTensor` provides:
 
 - **Automatic halo exchange** — operations are intercepted at the functional
   level; communication happens transparently without manual padding or send/recv
-- **Correct gradients** — `mean().backward()` on a ShardTensor automatically
-  distributes gradients to their proper sharding
-- **Irregular data support** — unlike DTensor's uniform `torch.chunk`,
-  ShardTensor handles meshes, point clouds, and unevenly-distributed domains
+- **Correct gradients** — `mean().backward()` on a `ShardTensor` automatically
+  distributes gradients to their proper shards
+- **Irregular data support** — unlike `DTensor`'s uniform `torch.chunk`,
+  `ShardTensor` handles meshes, point clouds, and unevenly-distributed domains
 
-Under the hood, ShardTensor extends PyTorch's DTensor with:
+Under the hood, `ShardTensor` extends PyTorch's `DTensor` with:
 
 - A specification that tracks the shape of each local tensor along sharding
   axes (critical for non-uniform data like point clouds)
 - A dispatcher that intercepts operations at the functional level (higher
-  than DTensor's dispatch level), falling back to DTensor when no custom
+  than `DTensor`'s dispatch level), falling back to `DTensor` when no custom
   implementation exists
 - Dedicated `sum` and `mean` reductions that correctly intercept and
   distribute gradients
 
-Domain parallelism with ShardTensor performs best when:
+Supported layers include convolutions, normalizations, upsampling/pooling, and attention layers.
+
+Domain parallelism with `ShardTensor` performs best when:
 
 - GPU kernels are **large** (big input data) — the communication-to-compute ratio stays small
 - GPU kernels are **non-blocking** — the slightly higher overhead of domain parallelism still fills the GPU queue efficiently
 
-
-Supported layers include convolutions, normalizations, upsampling/pooling, and attention layers. ShardTensor intercepts operations at the dispatch level and inserts the necessary communication.
-
-
-PhysicsNeMo provides `ShardTensor`, a high-level abstraction built on PyTorch's `DTensor` that handles domain parallelism with minimal code changes:
-```python
-import torch
-import torch.nn as nn
-from physicsnemo.distributed import DistributedManager
-from physicsnemo.distributed.shard_tensor import ShardTensor
-from torch.distributed.device_mesh import init_device_mesh
-
-# Initialize distributed
-DistributedManager.initialize()
-dm = DistributedManager()
-
-# Create a 2D device mesh: [data_parallel, domain_parallel]
-# e.g., 8 GPUs total = 2 data-parallel × 4 domain-parallel
-mesh = init_device_mesh("cuda", (2, 4), mesh_dim_names=("dp", "spatial"))
-
-# Your model — no modifications needed if using supported layers
-model = MyWeatherModel()
-
-# Distribute input: shard along the latitude dimension
-# ShardTensor handles halo exchanges automatically for supported ops
-input_tensor = torch.randn(1, 73, 721, 1440, device="cuda")
-sharded_input = ShardTensor.from_local(
-    input_tensor.chunk(4, dim=-2)[dm.rank % 4],  # split lat dim
-    device_mesh=mesh["spatial"],
-)
-
-# Forward pass — halo exchanges happen automatically
-output = model(sharded_input)
-```
-
-
-To learn more about ShardTensor and domain parallelism, see the [NVIDIA PhysicsNeMo docs](https://docs.nvidia.com/physicsnemo/user-guide/latest/physicsnemo-distributed/domain-parallelism/shard-tensor.html) and the [domain parallel + FSDP tutorial](https://docs.nvidia.com/physicsnemo/user-guide/latest/physicsnemo-distributed/domain-parallelism/fsdp-and-shard-tensor.html).
+To learn more about `ShardTensor` and domain parallelism, see the [NVIDIA PhysicsNeMo docs](https://docs.nvidia.com/physicsnemo/user-guide/latest/physicsnemo-distributed/domain-parallelism/shard-tensor.html) and the [domain parallel + FSDP tutorial](https://docs.nvidia.com/physicsnemo/user-guide/latest/physicsnemo-distributed/domain-parallelism/fsdp-and-shard-tensor.html).
 
 
 ## Running the Examples
@@ -204,11 +169,11 @@ torchrun --standalone --nproc_per_node=4 \
 ```
 
 
-## Further reading:
+## Further Reading
 
-- [Domain Parallelism and ShardTensor](https://docs.nvidia.com/physicsnemo/user-guide/latest/physicsnemo-distributed/domain-parallelism/shard-tensor.html)
-- [Implementing New Layers for ShardTensor](https://docs.nvidia.com/physicsnemo/user-guide/latest/physicsnemo-distributed/domain-parallelism/implementing-new-layers.html)
-- [Domain Decomposition, ShardTensor, and FSDP Tutorial](https://docs.nvidia.com/physicsnemo/user-guide/latest/physicsnemo-distributed/domain-parallelism/fsdp-and-shard-tensor.html)
+- [Domain Parallelism and `ShardTensor`](https://docs.nvidia.com/physicsnemo/user-guide/latest/physicsnemo-distributed/domain-parallelism/shard-tensor.html)
+- [Implementing New Layers for `ShardTensor`](https://docs.nvidia.com/physicsnemo/user-guide/latest/physicsnemo-distributed/domain-parallelism/implementing-new-layers.html)
+- [Domain Decomposition, `ShardTensor`, and FSDP Tutorial](https://docs.nvidia.com/physicsnemo/user-guide/latest/physicsnemo-distributed/domain-parallelism/fsdp-and-shard-tensor.html)
 
 ## What's Next?
 

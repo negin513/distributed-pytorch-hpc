@@ -48,9 +48,8 @@ Here is the high-level lifecycle of a parameter shard during training with 4 GPU
    GPU 3: [grad shard 3]  (already reduced + sharded)
 
 7. Optimizer step — each GPU updates only its shard
-```
 
-in psesudo-code:
+In pseudo-code:
 ```
 FSDP forward pass:
     for layer_i in layers:
@@ -190,7 +189,7 @@ with FSDP.state_dict_type(model, StateDictType.FULL_STATE_DICT, save_policy):
 if local_rank == 0:
     torch.save(cpu_state_dict, "full_weather_model.pt")
 
-``
+```
 
 ## Running the Examples
 
@@ -213,6 +212,6 @@ qsub scripts/02_fully_sharded_fsdp/run_fsdp.sh
 
 ## What's Next?
 
-FSDP shards entire parameters across all GPUs layer-by-layer. But what if a single layer's weight matrix is so massively wide that even gathering it temporarily causes an OOM? Tensor Parallelism solves this by splitting the actual matrix multiplication across GPUs
+FSDP shards entire parameters across all GPUs layer-by-layer. But what if a single layer's weight matrix is so massively wide that even gathering it temporarily causes an OOM? Tensor Parallelism solves this by splitting the actual matrix multiplication across GPUs.
 
 **Next:** [Chapter 6 — Tensor Parallel](06_tensor_parallel.md)

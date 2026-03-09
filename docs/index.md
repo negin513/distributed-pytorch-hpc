@@ -7,18 +7,9 @@ This repository contains example workflows for executing multi-node, multi-GPU m
 
 While this code is written to run directly on [Derecho](https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/) GPU nodes, it can be adapted for other GPU HPC machines.
 
-## Getting Started
+The docs in here are meant to be a quick start guide for users who want to learn more about distributed training paradigms. 
 
-New to distributed training? Start with the [guide](guide/01_single_gpu_baseline.md) — it takes you from a single-GPU training loop to every major distributed strategy.
-
-Already know what you need?
-
-- **[Strategy Decision Guide](guide/strategy_decision_guide.md)** — quick-reference flowchart
-- **[Derecho Guide](guide/derecho_guide.md)** — hardware specs and PBS reference
-- **[NCCL Tuning](guide/nccl_tuning.md)** — network configuration deep dive
-- **[Troubleshooting](guide/troubleshooting.md)** — common errors and solutions
-
-## Quick Start
+## Quick Start on Derecho
 
 ```bash
 git clone https://github.com/NCAR/distributed-pytorch-hpc

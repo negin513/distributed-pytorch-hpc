@@ -209,7 +209,7 @@ qsub scripts/02_fully_sharded_fsdp/run_fsdp.sh
 ```
 
 **See also:**
-- [`scripts/02_fully_sharded_fsdp/resnet_fsdp_training.py`](../../scripts/02_fully_sharded_fsdp/resnet_fsdp_training.py) — FSDP training with ResNet-18 on CIFAR-10
+- [`scripts/02_fully_sharded_fsdp/resnet_fsdp_training.py`](../../scripts/02_fully_sharded_fsdp/resnet_fsdp_training.py) — FSDP training with ResNet-18 on CIFAR-10  
 - [`scripts/02_fully_sharded_fsdp/README.md`](../../scripts/02_fully_sharded_fsdp/README.md) — deep dive on FSDP
 
 ## What's Next?

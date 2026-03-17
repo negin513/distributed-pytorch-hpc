@@ -1,18 +1,15 @@
 # Chapter 3: Communication Primitives (Collective Operations)
 
 Every distributed strategy from [Chapter 2](02_why_distributed.md) boils down to a pattern of
-communication (collective operations) between GPUs. 
+communication (collective operations) between GPUs. Once you understand these communication primitives, every distributed strategy is just a specific pattern of these operations.
 
-This chapter covers the building blocks:
+This chapter covers the building blocks of distributed training: 
 ranks, process groups, and the five collective operations you'll see
 throughout the guide.
 
-**Key insight:** Once you understand these primitives, every distributed
-strategy is just a specific pattern of these operations.
-
 ## Processes and Ranks
 
-Distributed training runs multiple copies of your training script simultaneously — one per GPU. Each copy is called a **process**, and each process has a unique identifier called a **rank**.
+Distributed training runs multiple copies of your training script simultaneously -- one per GPU. Each copy is called a **process**, and each process has a unique identifier called a **rank**.
 
 Each process is identified by three numbers (assigned by the launcher):
 
@@ -28,36 +25,10 @@ For example, with 2 nodes and 4 GPUs each, you have 8 processes with `WORLD_RANK
 
 
 
-![local_rank.png](https://miro.medium.com/v2/resize:fit:1380/format:webp/0*qH8bsMbEZ9ZMQuXm.png)
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│              WORLD RANK VS LOCAL RANK (2 nodes × 4 GPUs)            │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│   Node 0                              Node 1                        │
-│   ┌───────────────────────────┐       ┌───────────────────────────┐ │
-│   │  ┌─────┐ ┌─────┐          │       │  ┌─────┐ ┌─────┐          │ │
-│   │  │GPU 0│ │GPU 1│          │       │  │GPU 0│ │GPU 1│          │ │
-│   │  │     │ │     │          │       │  │     │ │     │          │ │
-│   │  │LR=0 │ │LR=1 │          │       │  │LR=0 │ │LR=1 │          │ │
-│   │  │WR=0 │ │WR=1 │          │       │  │WR=4 │ │WR=5 │          │ │
-│   │  └─────┘ └─────┘          │       │  └─────┘ └─────┘          │ │
-│   │  ┌─────┐ ┌─────┐          │       │  ┌─────┐ ┌─────┐          │ │
-│   │  │GPU 2│ │GPU 3│          │       │  │GPU 2│ │GPU 3│          │ │
-│   │  │     │ │     │          │       │  │     │ │     │          │ │
-│   │  │LR=2 │ │LR=3 │          │       │  │LR=2 │ │LR=3 │          │ │
-│   │  │WR=2 │ │WR=3 │          │       │  │WR=6 │ │WR=7 │          │ │
-│   │  └─────┘ └─────┘          │       │  └─────┘ └─────┘          │ │
-│   └───────────────────────────┘       └───────────────────────────┘ │
-│                                                                     │
-│   LR = LOCAL_RANK (0-3 on each node) → Use for: torch.cuda.set_device│
-│   WR = WORLD_RANK (0-7 globally)     → Use for: distributed ops     │
-│                                                                     │
-│   WORLD_SIZE = 8 (total processes)                                  │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
-```
+<figure markdown="span">
+  ![World Rank vs Local Rank](https://miro.medium.com/v2/resize:fit:1380/format:webp/0*qH8bsMbEZ9ZMQuXm.png)
+  <figcaption>Figure 1: World Rank vs Local Rank across two nodes with 4 GPUs each. (Source: Medium)</figcaption>
+</figure>
 
 * You use `LOCAL_RANK` to assign a GPU: `torch.cuda.set_device(LOCAL_RANK)`.
 * You use `WORLD_RANK` for coordination: rank 0 typically handles logging,
@@ -165,17 +136,33 @@ tp_group_2 = dist.new_group(ranks=[4, 5, 6, 7])
 
 ### Backends
 
-A **backend** is the library that actually performs the communication between GPUs. Different backends are optimized for different hardware.
+A **backend** is the communication layer used by PyTorch to exchange data between processes (e.g., GPUs or nodes). Different backends are optimized for different hardware and use cases.
 
+| Backend | Hardware        | Typical Use Case                          |
+|---------|----------------|------------------------------------------|
+| `nccl`  | NVIDIA GPUs    | High-performance GPU training (default)  |
+| `gloo`  | CPU            | CPU training or fallback                 |
+| `mpi`   | CPU / GPU      | MPI-based environments and launchers     |
 
-| Backend | Hardware | Use for |
-|---------|----------|---------|
-| `nccl` | NVIDIA GPUs | GPU tensors (default for training) |
-| `gloo` | CPU | CPU tensors, fallback |
-| `mpi` | Any | When MPI is your launcher |
+!!! tip
+    For GPU training, **`nccl` is almost always the best choice** due to its optimized collective communication (e.g., all-reduce, broadcast).
 
-On Derecho, use `nccl` for GPU communication; but you need to ensure that your cluster has the necessary libraries installed and configured for Cray HPE Slingshot 11.
-The wheel provided in `environment.yaml` includes NCCL support for Slingshot 11, but you may need to verify that the correct version of NCCL is being used and that it is properly configured for your cluster's network topology.
+!!! note "Notes for Derecho"
+    On Derecho, you should use **`nccl`** for GPU communication. However, proper performance depends on having the correct environment and network configuration.
+
+    - Derecho uses **Cray HPE Slingshot 11**, which requires NCCL to be built or configured with Slingshot support.
+    - The PyTorch wheel provided in your `environment.yaml` includes NCCL support compatible with Slingshot 11.
+    - You should verify that:
+        - The correct NCCL library is being used at runtime  
+        - Environment variables (e.g., networking and transport settings) are properly configured  
+        - The runtime is not falling back to a slower backend (e.g., `gloo`)
+
+!!! warning
+    Misconfigured NCCL environments can silently degrade performance (e.g., falling back to TCP instead of high-speed interconnects).
+
+---
+
+In most cases, once NCCL is correctly configured, it will automatically use the fastest available transport on the system.
 
 
 
@@ -190,8 +177,10 @@ Every GPU starts with a value. After all-reduce operations, every GPU has the
 
 This is the core of DDP, where gradients are all-reduced after each backward pass to compute the average gradient across all GPUs before the optimizer step.
 
-+![NVIDIA All-Reduce illustration](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/_images/allreduce.png)
-Image source: NVIDIA NCCL documentation
+<figure markdown="span">
+  ![All-Reduce](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/_images/allreduce.png)
+  <figcaption>Figure 2: All-Reduce — every GPU ends up with the sum of all values. (Source: NVIDIA NCCL documentation)</figcaption>
+</figure>
 
 
 ### 2. All-Gather
@@ -203,7 +192,10 @@ FSDP uses this to reassemble sharded parameters before
 forward/backward.
 
 
-![NVIDIA All-Gather illustration](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/_images/allgather.png)
+<figure markdown="span">
+  ![All-Gather](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/_images/allgather.png)
+  <figcaption>Figure 3: All-Gather — each GPU contributes a piece, and every GPU ends up with all pieces concatenated. (Source: NVIDIA NCCL documentation)</figcaption>
+</figure>
 
 ```
 Before:           Operation:         After:
@@ -221,7 +213,10 @@ The inverse of all-gather. Reduces (sums) data and **scatters** the
 result so each GPU gets one piece. FSDP uses this after backward to
 produce sharded gradients.
 
-![NVIDIA Reduce-Scatter illustration](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/_images/reducescatter.png)
+<figure markdown="span">
+  ![Reduce-Scatter](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/_images/reducescatter.png)
+  <figcaption>Figure 4: Reduce-Scatter — data is reduced (summed) and each GPU receives one shard of the result. (Source: NVIDIA NCCL documentation)</figcaption>
+</figure>
 
 ```
 Before:                    Operation:              After:
@@ -232,8 +227,10 @@ GPU 3: [d0, d1, d2, d3]                          GPU 3: [a3+b3+c3+d3]
 ```
 
 !!! note: The all-gather + reduce-scatter pair is a powerful pattern for sharding data across GPUs while still allowing for global operations. FSDP uses this pattern to shard parameters and gradients, while TP can use it to shard activations.
-![FSDP All-Gather illustration](https://engineering.fb.com/wp-content/uploads/2021/07/FSDP-graph-2a.png)
-Image source: Facebook FSDP paper
+<figure markdown="span">
+  ![FSDP All-Gather and Reduce-Scatter](https://engineering.fb.com/wp-content/uploads/2021/07/FSDP-graph-2a.png)
+  <figcaption>Figure 5: FSDP uses All-Gather to reassemble parameters before forward/backward, and Reduce-Scatter to shard gradients afterward. (Source: Facebook FSDP paper)</figcaption>
+</figure>
 
 
 ### 4. Broadcast
@@ -243,7 +240,10 @@ So one GPU sends its data to all others as shown in the image below....
 
 Used for syncing initial model weights or distributing hyperparameters.
 
-![NVIDIA Broadcast illustration](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/_images/broadcast.png)
+<figure markdown="span">
+  ![Broadcast](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/_images/broadcast.png)
+  <figcaption>Figure 6: Broadcast — one GPU sends its data to all other GPUs. (Source: NVIDIA NCCL documentation)</figcaption>
+</figure>
 
 ```
 Before:           Operation:         After:
@@ -263,7 +263,10 @@ uses this: stage N sends activations to stage N+1.
 ### 6. All-to-All
 In All-to-All, each GPU transmits unique data to every other GPU. To achieve this, each GPU breaks down its data into chunks. Subsequently, each GPU directly sends and receives these chunks to and from every other GPU. Finally, each GPU reconstructs the received data chunks.
 
-![All-to-All illustration](https://miro.medium.com/v2/resize:fit:720/format:webp/1*k7blVUX0r9nb51Kg825Veg.png)
+<figure markdown="span">
+  ![All-to-All](https://miro.medium.com/v2/resize:fit:720/format:webp/1*k7blVUX0r9nb51Kg825Veg.png)
+  <figcaption>Figure 7: All-to-All — each GPU sends unique data chunks to every other GPU.</figcaption>
+</figure>
 
 ## Hardware Topology Matters
 

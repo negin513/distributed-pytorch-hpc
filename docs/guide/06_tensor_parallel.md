@@ -6,8 +6,11 @@ While FSDP shards whole parameters and reconstructs them before use, TP keeps
 each GPU's shard in place and computes partial results that are combined
 with a collective operation.
 
-![Tensor Parallelism Overview](../images/tp_overview.png)
-*Figure 1: Tensor Parallelism distributes individual layer parameters across multiple GPUs. (Source: Physics-Nemo)*
+<figure markdown="span">
+  ![Modes of Parallelism](../images/modes_of_parallelism_diagram.png)
+  <figcaption>Figure 1: Overview of parallelism modes — Data, Tensor, and Pipeline Parallelism. Tensor Parallelism splits individual layers across GPUs. (Source: robotchinwag.com)</figcaption>
+</figure>
+
 
 ## How It Works
 
@@ -17,22 +20,28 @@ TP partitions large weight matrices across GPUs. For a linear layer `Y = X x W`,
 
 The weight matrix is split along columns across GPUs. Each GPU receives an identical copy of the input and performs matrix multiplication on its column shard. The partial outputs are then concatenated via an all-gather operation.
 
-![Column-wise Parallel](../images/tp_colwise.jpeg)
-*Figure 2: Column-wise parallel splits the weight matrix W along columns. Each GPU computes a partial output, then results are gathered.*
+<figure markdown="span">
+  ![Column-wise Parallel](../images/tp_colwise.jpeg)
+  <figcaption>Figure 3: Column-wise parallel splits the weight matrix W along columns. Each GPU computes a partial output, then results are gathered.</figcaption>
+</figure>
 
 ### Row-Parallel Linear
 
 The weight matrix is split along rows across GPUs. The input is divided along the inner dimension so each GPU has a corresponding shard. Each GPU computes a partial result, and outputs are combined via an all-reduce summation.
 
-![Row-wise Parallel](../images/tp_rowwise.jpeg)
-*Figure 3: Row-wise parallel splits the weight matrix W along rows. Each GPU computes a partial sum, then results are reduced.*
+<figure markdown="span">
+  ![Row-wise Parallel](../images/tp_rowwise.jpeg)
+  <figcaption>Figure 4: Row-wise parallel splits the weight matrix W along rows. Each GPU computes a partial sum, then results are reduced.</figcaption>
+</figure>
 
 ### Combined Column + Row Parallelism
 
 In practice, sequential linear layers (e.g., in an MLP block) use both methods together. The column-wise output feeds directly into the row-wise layer **without any data transfer between GPUs**. Element-wise operations like activation functions also apply without communication overhead. This is the key insight from the [Megatron-LM paper](https://arxiv.org/abs/1909.08053).
 
-![Combined Column and Row Parallel](../images/tp_combined.jpeg)
-*Figure 4: Combined approach pairs column-wise and row-wise parallelism to minimize communication to a single all-reduce per block.*
+<figure markdown="span">
+  ![Combined Column and Row Parallel](../images/tp_combined.jpeg)
+  <figcaption>Figure 5: Combined approach pairs column-wise and row-wise parallelism to minimize communication to a single all-reduce per block.</figcaption>
+</figure>
 
 
 ## PyTorch TP API
@@ -65,17 +74,16 @@ model = parallelize_module(
 
 ## TP Degree on Derecho
 
-TP requires frequent all-reduces between GPUs. 
-The **TP degree** is the number of GPUs that collectively hold one layer's weights. On Derecho, each node has 4 A100 80GB GPUs connected via NVLink (600 GB/s bidirectional). This makes the node boundary the natural limit for TP.
+TP requires frequent `all-reduce`s between GPUs. 
+The **TP degree** is the number of GPUs that collectively hold one layer's weights. On Derecho, each node has 4 A100 40GB GPUs connected via NVLink (600 GB/s bidirectional). This makes the node boundary the natural limit for TP.
  
 | TP Degree | Interconnect | All-reduce Cost | Recommendation |
 |:---:|:---:|:---:|:---:|
-| 2 | NVLink | Low | Good starting point |
-| 4 | NVLink | Moderate | Max within one Derecho node |
+| 4 | NVLink | Low | Max within one Derecho node |
 | 8 | NVLink + InfiniBand | High | Crosses node boundary — avoid |
  
 !!! warning "Keep TP within a node"
-    TP requires an all-reduce at every layer (forward and backward). This is fine over NVLink (~600 GB/s) but painful over InfiniBand (~25 GB/s per link). A TP degree of 8 on Derecho means 4 GPUs communicate over NVLink and 4 over HPE Slinggshot -- which results in the slow link dominating. 
+    TP requires an all-reduce at every layer (forward and backward). This is fine over NVLink but slow over InfiniBand. A TP degree of 8 on Derecho means 4 GPUs communicate over NVLink and 4 over HPE Slinggshot -- which results in the slow link dominating. 
  
 ```python
 from torch.distributed.device_mesh import init_device_mesh

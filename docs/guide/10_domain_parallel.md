@@ -104,7 +104,10 @@ torch.allclose(full_output, recombined)  # True!
 
 This manual padding is exactly what **halo exchange** automates across GPUs.
 
-[For a Julia-based example of halo arrays, see MPIHaloArrays.jl.](https://discourse.julialang.org/t/ann-mpihaloarrays-jl/77385)
+<figure markdown="span">
+  ![MPIHaloArrays.jl](../images/mpi_halo_array.png)
+  <figcaption>MPIHaloArrays.jl: Halo exchange between neighboring subdomains. (Source: JuliaLang Discourse)</figcaption>
+</figure>
 
 
 ## Practical Implementation

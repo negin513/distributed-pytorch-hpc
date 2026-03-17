@@ -17,43 +17,14 @@ Pipeline parallelism is often used in combination with other strategies — for 
 
 In a naive pipeline, because each GPU depends on the output of the previous one, some devices may be idle at times, which means resource underutilization. To reduce these idle periods, the input batch can be split into smaller microbatches.
 
-Each microbatch is processed through the pipeline, allowing different stages to work on different microbatches simultaneously. This technique helps to keep all GPUs busy and reduces the idle time (or "pipeline bubbles"), improving overall efficiency. However, it also increases memory usage because activations for multiple microbatches must be stored at once.
-
-### Micro-Batching Reduces Bubbles
-
-Micro-batching allows the pipeline to be filled with multiple micro-batches, reducing idle time. 
-Each micro-batch is processed through the pipeline, allowing different stages to work on different micro-batches simultaneously. This technique helps to keep all GPUs busy and reduces the idle time (or "pipeline bubbles"), improving overall efficiency. However, it also increases memory usage because activations for multiple micro-batches must be stored at once.
-
-The solution: split each mini-batch into **micro-batches** and pipeline
-them. While GPU 0 processes micro-batch 2, GPU 1 processes micro-batch 1:
-
-```
-GPipe schedule (4 stages, 4 micro-batches):
-
-Time ──────────────────────────────────────────────────────►
-GPU 0: [ F₁ ][ F₂ ][ F₃ ][ F₄ ]          [ B₄ ][ B₃ ][ B₂ ][ B₁ ]
-GPU 1:       [ F₁ ][ F₂ ][ F₃ ][ F₄ ]    [ B₄ ][ B₃ ][ B₂ ][ B₁ ]
-GPU 2:             [ F₁ ][ F₂ ][ F₃ ][ F₄ ][ B₄ ][ B₃ ][ B₂ ][ B₁ ]
-GPU 3:                   [ F₁ ][ F₂ ][ F₃ ][ F₄ ][ B₄ ][ B₃ ][ B₂ ][ B₁ ]
-
-F = forward    B = backward
-
-Bubble fraction = (stages - 1) / micro-batches = 3/4 = 75% ... still bad
-```
-
-More micro-batches → smaller bubble:
-
-```
-With 16 micro-batches: bubble = 3/16 = 19%
-With 32 micro-batches: bubble = 3/32 = 9%
-```
+Each microbatch is processed through the pipeline, allowing different stages to work on different microbatches simultaneously. This technique helps to keep all GPUs busy and reduces the idle time (or "pipeline bubbles"), improving overall efficiency and reducing the idle time. However, it also increases memory usage because activations for multiple microbatches must be stored at once.
 
 ## Typical Implementations of Pipeline Parallelism
 There are four common implementations of pipeline parallelism, each with different tradeoffs:
-- GPipe: all forwards, then all backwards (high memory)
-- PipeDream: introduces asynchronous execution to reduce bubbles (but can cause staleness)
-- PipeDream-2BW: Optimizes memory and communication by using 2 weight buffers -- 2-Backward-Weight that reduces staleness
-- PipeDream Flush (1F1B): implements the 1F1B (One Forward, One Backward) scheduling strategy to reduce pipeline bubbles and improve efficiency.
+- GPipe: all forwards, then all backwards (high memory)  
+- PipeDream: introduces asynchronous execution to reduce bubbles (but can cause staleness)  
+- PipeDream-2BW: Optimizes memory and communication by using 2 weight buffers -- 2-Backward-Weight that reduces staleness  
+- PipeDream Flush (1F1B): implements the 1F1B (One Forward, One Backward) scheduling strategy to reduce pipeline bubbles and improve efficiency.  
 
 ### GPipe
 

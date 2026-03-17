@@ -102,10 +102,12 @@ Chapter 9 (Hybrid Parallelism) covers how to combine TP with FSDP for large mode
 ## 1D vs 2D Tensor Parallelism
 
 **1D TP** splits weight matrices along one dimension (columns or rows),
-as shown above.
+as shown above. We learned about this in the above section. 
 
 **2D TP** splits along both dimensions using a 2D GPU grid. This reduces
-communication volume but requires more GPUs. With 4 GPUs in a 2×2 grid:
+communication volume but requires more GPUs. 
+
+With 4 GPUs in a 2×2 grid:
 
 ```
 Weight matrix A [K × N]:
@@ -120,11 +122,10 @@ Weight matrix A [K × N]:
    └───────────┴───────────┘
      GPU (1,0)     GPU (1,1)
 
-Communication: reduce-scatter along rows, all-gather along columns
 ```
 
 2D TP reduces the per-GPU communication from O(N) to O(√N) but adds
-complexity. See the scripts for a working example.
+complexity in process-group management, data layout, synchronization, and implementation overhead. In practice, this means better scalability at large GPU counts, but a more complicated setup than 1D TP. See the scripts for a working example.. See the scripts for a working example.
 
 ## Running the Examples
 

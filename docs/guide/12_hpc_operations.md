@@ -6,10 +6,10 @@ scripts, launch methods, NCCL tuning, and debugging.
 
 
 Topics include:
-- PBS job scripts
-- Launch methods: `torchrun`, `mpiexec + python`, `mpiexec + torchrun`
-- NCCL tuning for Slingshot
-- Debugging distributed jobs
+- PBS job scripts 
+- Launch methods: `torchrun`, `mpiexec + python`, `mpiexec + torchrun` 
+- NCCL tuning for Slingshot 
+- Debugging distributed jobs 
 
 ## PBS Basics
 

@@ -30,15 +30,16 @@ Each GPU computes gradients independently, then participates in an all-reduce op
 
 ## How to modify your training script for DDP?
 
-There are only a few changes needed to convert a single-GPU training script to DDP. The main steps are:
-1. Initialize the distributed process group
-2. Set the device for each process using `local_rank`
-3. Wrap your model with `DistributedDataParallel`
-4. Use `DistributedSampler` for your dataset to ensure proper data sharding
-5. Set the epoch on the sampler at the start of each epoch to ensure different shuffling each epoch.    
-6. Keep the training loop the same (zero_grad → forward → backward → step)
-7. Clean up the process group at the end of training.
+There are only a few changes needed to convert a single-GPU training script to DDP.  
 
+The main steps are:  
+1. Initialize the distributed process group  
+2. Set the device for each process using `local_rank`  
+3. Wrap your model with `DistributedDataParallel`  
+4. Use `DistributedSampler` for your dataset to ensure proper data sharding  
+5. Set the epoch on the sampler at the start of each epoch to ensure different shuffling each epoch.    
+6. Keep the training loop the same (zero_grad → forward → backward → step)  
+7. Clean up the process group at the end of training.  
 
 ### 1. Initialize the process group:
 Each DDP process needs to initialize the process group for communication. This is typically done at the start of your script:

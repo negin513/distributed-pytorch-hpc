@@ -23,7 +23,7 @@ The memory consumed by **activations** during training scales linearly with sequ
  
 ## How Sequence Parallelism Works
  
-The core idea: split the input sequence into chunks along the sequence dimension and assign each chunk to a different GPU. Each GPU processes only its portion of the sequence.
+The core idea is to split the input sequence into chunks along the sequence dimension and assign each chunk to a different GPU. Each GPU processes only its portion of the sequence.
  
 With 4 GPUs and a sequence of length $N$:
  

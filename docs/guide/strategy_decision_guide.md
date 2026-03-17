@@ -6,32 +6,32 @@ workload on Derecho.
 ## Decision Flowchart
 
 ```
-                    Does your model fit on 1 GPU?
-                    ┌───────────┴───────────┐
-                   YES                      NO
-                    │                        │
-              Use DDP (01_*)          What doesn't fit?
-              (simplest, best          ┌─────┴──────┐
-               scaling for          Too many      Too many
-               data parallel)       parameters    activations
-                                       │              │
-                                 Is it deep        Is input
-                                 (many layers)?    spatially large?
-                                 ┌────┴────┐      ┌────┴────┐
-                                YES       NO     YES       NO
-                                 │         │      │         │
-                              Use PP    Use TP  Domain    Use FSDP
-                             (04_*)   (03_*)   Parallel    (02_*)
-                                │         │    (07_*)
-                                │         │
-                          ┌─────┴─────────┴─────┐
-                          │  Still doesn't fit?  │
-                          │  Combine strategies: │
-                          │                      │
-                          │  TP + FSDP (06_*)    │
-                          │  TP + PP + FSDP      │
-                          │  TP + SP (05_*)      │
-                          └──────────────────────┘
+
+                              Single GPU Training
+                                       │
+                 ┌─────────────────────┴─────────────────────┐
+                 ▼                                           ▼
+        Wall 1: Fits in memory,                 Doesn't fit in memory
+             but too slow?                                   │
+                 │                                           │
+                 ▼                                           ▼
+        Data Parallelism (DDP)                      What is too large?
+         (Replicate Model,                                   │
+           Split Batch)                ┌─────────────────────┴─────────────────────┐
+                 │                     ▼                                           ▼
+                 │             Wall 3: Model Weights                  Wall 2: Spatial/Input
+                 │              & Optimizer State                   Dimensions (Activations)
+                 │                     │                                           │
+                 │         ┌───────────┼───────────┐                   ┌───────────┴───────────┐
+                 │         ▼           ▼           ▼                   ▼                       ▼
+                 │       FSDP          TP          PP           Domain Parallel       Sequence Parallel
+                 │   (Shard All)  (Split Wts) (Split Depth)     (Halo Exchange)         (Ulysses/Ring)
+                 │         │           │           │                   │                       │
+                 └─────────┴───────────┴───────────┴───────────────────┴───────────────────────┘
+                                                   │
+                                                   ▼
+                                          Hybrid Parallelism
+                           (e.g., FSDP + TP + Sequence Parallel simultaneously)
 ```
 
 ## Strategy Comparison Table

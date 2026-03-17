@@ -4,13 +4,18 @@ Data Parallel is the most common distributed training strategy and usually the f
 
 PyTorch DistributedDataParallel (DDP) is the standard implementation of this strategy.
 
-DDP works by running one process per GPU, where:
-- Each process has its own full copy of the model
-- Each process computes forward and backward passes on its own batch (shard) of data
-- Gradients are averaged across all processes using an efficient collective communication operation called `all-reduce` after each backward pass, ensuring that all model replicas remain in sync.
+DDP works by running one process per GPU, where:  
+- Each process has its own full copy of the model   
+- Each process computes forward and backward passes on its own batch (shard) of data  
+- Gradients are averaged across all processes using an efficient collective   communication operation called `all-reduce` after each backward pass, ensuring that all model replicas remain in sync.  
 
 DDP is PyTorch's recommended approach and easiest to implement for multi-GPU training and works across both single-node and multi-node setups.
 
+!!! info "what is `all-reduce`?"
+    `all-reduce` is a collective communication operation that takes tensors from all processes, performs a reduction (e.g., sum) across them, and then distributes the result back to all processes. In DDP, it's used to average gradients across GPUs after the backward pass, ensuring that each model replica has the same updated parameters before the next optimization step. Read more about `all-reduce` in the [PyTorch Collective Communication chapter](03_collective_communication.md#all-reduce).
+
+![DDP Architecture](https://miro.medium.com/v2/resize:fit:720/format:webp/1*zbgdxY4VN_uola6kQWzlzw.png)
+*Figure 1: DDP replicates the full model on each GPU and averages gradients across GPUs after backward pass (Image from Medium)*
 ## How DDP Works?
 
 1. **Model Replication**: Each GPU gets a full copy of the model
@@ -19,7 +24,7 @@ DDP is PyTorch's recommended approach and easiest to implement for multi-GPU tra
 4. **Gradient Sync**: During backward propagation, gradients are averaged across all GPUs using `all-reduce` operation (typically via NCCL backend for GPUs)
 5. **Parameter Update**: All GPUs update their parameters and after synchronization, each model replica remains identical.
 
-![DDP Architecture](https://miro.medium.com/v2/resize:fit:720/format:webp/1*zbgdxY4VN_uola6kQWzlzw.png)
+
 
 Each GPU computes gradients independently, then participates in an all-reduce operation to ensure all model replicas remain identical before the next optimization step.
 

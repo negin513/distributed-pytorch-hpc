@@ -7,8 +7,8 @@ Before we distribute anything, we need a solid single-GPU training script to ser
 Here's a minimal but complete training loop — a simple U-Net predicting weather on ERA5-like data. We use U-Net here because it's familiar and keeps the focus on distributed training concepts.
 
 > **Note:** State-of-the-art weather models use specialized architectures better suited for global, spherical data:
-> - **GraphCast**: Graph Neural Networks on icosahedral mesh 
-> - **Pangu-Weather**: 3D Swin Transformers 
+> - **GraphCast**: Graph Neural Networks on icosahedral mesh   
+> - **Pangu-Weather**: 3D Swin Transformers   
 > - **FourCastNet v1**: Adaptive Fourier Neural Operators (AFNO) 
 > - **FourCastNet v2/3**: Spherical Fourier Neural Operators (SFNO) 
 > - **GenCast**: Diffusion models 

@@ -7,11 +7,11 @@ each GPU's shard in place and computes partial results that are combined
 with a collective operation.
 
 ![Tensor Parallelism Overview](../images/tp_overview.png)
-*Figure 1: Tensor Parallelism distributes individual layer parameters across multiple GPUs.*
+*Figure 1: Tensor Parallelism distributes individual layer parameters across multiple GPUs. (Source: Physics-Nemo)*
 
 ## How It Works
 
-TP partitions large weight matrices across GPUs. For a linear layer `Y = XW`, there are two fundamental approaches:
+TP partitions large weight matrices across GPUs. For a linear layer `Y = X x W`, there are two fundamental approaches:
 
 ### Column-Parallel Linear
 
@@ -65,20 +65,31 @@ model = parallelize_module(
 
 ## TP Degree on Derecho
 
-TP requires frequent all-reduces between GPUs. On Derecho, each node
-has 4 A100 GPUs connected via NVLink (600 GB/s), so keep TP within a
-single node:
-
+TP requires frequent all-reduces between GPUs. 
+The **TP degree** is the number of GPUs that collectively hold one layer's weights. On Derecho, each node has 4 A100 80GB GPUs connected via NVLink (600 GB/s bidirectional). This makes the node boundary the natural limit for TP.
+ 
+| TP Degree | Interconnect | All-reduce Cost | Recommendation |
+|:---:|:---:|:---:|:---:|
+| 2 | NVLink | Low | Good starting point |
+| 4 | NVLink | Moderate | Max within one Derecho node |
+| 8 | NVLink + InfiniBand | High | Crosses node boundary — avoid |
+ 
+!!! warning "Keep TP within a node"
+    TP requires an all-reduce at every layer (forward and backward). This is fine over NVLink (~600 GB/s) but painful over InfiniBand (~25 GB/s per link). A TP degree of 8 on Derecho means 4 GPUs communicate over NVLink and 4 over HPE Slinggshot -- which results in the slow link dominating. 
+ 
+```python
+from torch.distributed.device_mesh import init_device_mesh
+ 
+# TP within node, FSDP across nodes
+# Example: 2 nodes × 4 GPUs = 8 GPUs total
+# TP degree = 4 (intra-node), FSDP degree = 2 (inter-node)
+mesh = init_device_mesh("cuda", (2, 4), mesh_dim_names=("fsdp", "tp"))
+ 
+tp_mesh = mesh["tp"]     # 4 GPUs on same node
+fsdp_mesh = mesh["fsdp"] # same local_rank across nodes
 ```
-Derecho: 4 GPUs per node, NVLink (600 GB/s)
 
-Recommended: TP degree = 4 (one full node)
-
-Going beyond TP=4 puts TP communication on the slower Slingshot
-fabric, which hurts throughput.
-```
-
-For larger models, combine TP with FSDP across nodes (Chapter 9).
+Chapter 9 (Hybrid Parallelism) covers how to combine TP with FSDP for large models that require both intra-node and inter-node parallelism.
 
 ## 1D vs 2D Tensor Parallelism
 

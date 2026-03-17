@@ -160,34 +160,14 @@ In this guide, we focus on the **training stage** and how to scale it across mul
 ## What Goes on GPU Memory (VRAM) in Training?
 When training a deep learning model, the GPU memory (VRAM) acts as a high-speed workspace where several distinct components must coexist. If the total memory required by these components exceeds your VRAM capacity, you will encounter the **CUDA Out of Memory (OOM)** error.
 
-During training, four specific components compete for your GPU's memory:
-```
-┌─────────────────────────────────────────────────────────────┐
-│                  GPU Memory (80 GB A100)                    │
-│                                                             │
-│  ┌─────────────────┐  Model Parameters                      │
-│  │   ~400 MB       │  (SimpleUNet: ~100M params             │
-│  │                 │   × 4 bytes = 400 MB)                  │
-│  ├─────────────────┤                                        │
-│  │   ~400 MB       │  Gradients                             │
-│  │                 │  (same size as params)                 │
-│  ├─────────────────┤                                        │
-│  │   ~800 MB       │  Optimizer State                       │
-│  │                 │  (AdamW: 2× params for                 │
-│  │                 │   momentum + variance)                 │
-│  ├─────────────────┤                                        │
-│  │   ~20+ GB       │  Activations    ← THE BOTTLENECK       │
-│  │                 │  (saved for backward pass,             │
-│  │                 │   scales with spatial resolution       │
-│  │                 │   AND batch size)                      │
-│  └─────────────────┘                                        │
-│                                                             │
-│  Weather/Climate models have HUGE activations because:      │
-│  • High resolution grids (721×1440 at 0.25°)                │
-│  • Many channels (variables × pressure levels)              │
-│  • Deep networks with skip connections                      │
-└─────────────────────────────────────────────────────────────┘
-```
+During training, four specific components compete for your GPU's memory. As shown in the diagram below, the relative size of these components can vary significantly depending on the model architecture and input data, but in weather/climate models, **activations are often the dominant consumer of GPU memory**.
+
+<figure markdown="span">
+  ![GPU Memory Components](../images/gpu_memory_components.png)
+  <figcaption>Figure 2: What lives in GPU memory during training</figcaption>
+</figure>
+
+
 
 ### Why Weather/Climate AI Models Are Memory-Hungry?
 

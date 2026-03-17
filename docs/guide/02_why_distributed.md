@@ -29,11 +29,11 @@ In practice, there are many flavors of both data and model parallelism, and ther
 
 | Strategy | What's Split | Communication Pattern | Memory Savings | Chapters |
 |----------|-------------|----------------------|----------------|----------|
-| **DDP** | Data (batches) | All-reduce gradients | None (full copy) | [Ch 4](04_data_parallel_ddp.md) |
-| **FSDP** | Params + grads + optimizer | All-gather / reduce-scatter | High | [Ch 5](05_fully_sharded_fsdp.md) |
-| **TP** | Weight matrices | All-reduce activations | Medium | [Ch 6](06_tensor_parallel.md) |
-| **PP** | Model layers | Send/recv between stages | High | [Ch 7](07_pipeline_parallel.md) |
-| **SP** | Sequence dimension | All-gather / reduce-scatter or all-to-all | Medium | [Ch 8](08_sequence_parallel.md) |
+| **DDP** | Data (batches) | All-reduce (gradients) | None (full model copy) | [Ch 4](04_data_parallel_ddp.md) |
+| **FSDP** | Params + grads + optimizer | All-gather + reduce-scatter | High | [Ch 5](05_fully_sharded_fsdp.md) |
+| **TP** | Weight matrices (within layers) | All-reduce + all-gather (per layer) | Medium | [Ch 6](06_tensor_parallel.md) |
+| **PP** | Model layers (depth) | Send/recv (activations between stages) | Medium–High | [Ch 7](07_pipeline_parallel.md) |
+| **SP** | Sequence dimension | All-gather / reduce-scatter / all-to-all | Medium | [Ch 8](08_sequence_parallel.md) |
 | **Domain** | Spatial input data | Halo exchange (P2P) | High | [Ch 10](10_domain_parallel.md) |
 | **Hybrid** | Multiple of the above | Mixed | Very high | [Ch 9](09_hybrid_parallelism.md) |
 

@@ -177,8 +177,6 @@ torchrun --standalone --nproc_per_node=4 \
 
 ## What's Next?
 
-All strategies so far split the model or the batch. Domain Parallelism
-is different — it splits the **spatial input data** itself. This is
-essential for scientific computing workloads with high-resolution grids.
+All strategies so far split the model or the batch. Domain Parallelism  is different — it splits the **spatial input data** itself. This is essential for scientific computing workloads with high-resolution grids.
 
 **Next:** [Chapter 10 — Domain Parallel](10_domain_parallel.md)

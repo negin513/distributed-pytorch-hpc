@@ -2,177 +2,160 @@
 
 Before we distribute anything, we need a solid single-GPU training script to serve as our starting point. Every distributed strategy in this guide is a modification of this baseline.
 
+<figure markdown="span">
+  ![Typical AI/ML Workflow in Geosciences](../images/typical_ai_ml_workflow_geosciences.png)
+  <figcaption>Figure 1: Typical AI/ML workflow in Geosciences</figcaption>
+</figure>
+
+A typical AI/ML pipeline in geosciences begins with large observational or reanalysis datasets stored in formats such as Zarr, NetCDF, COG, and HDF. These datasets are ingested and preprocessed using libraries such as xarray, Dask, CuPy, and NumPy, and—if needed—regridded.
+
+The processed data is then fed into deep learning frameworks like PyTorch or TensorFlow for model training and validation on GPUs. Once trained, the model can be deployed for inference tasks such as weather forecasting, climate downscaling, or hazard prediction.
+
+In this guide, we focus on the **training stage** and how to scale it across multiple GPUs using different distributed training strategies.
+
+
+---
+
 ## A Complete Training Script
 
-Here's a minimal but complete training loop — a simple U-Net predicting weather on ERA5-like data. We use U-Net here because it's familiar and keeps the focus on distributed training concepts.
+??? note "Minimal single-GPU training example"
 
-> **Note:** State-of-the-art weather models use specialized architectures better suited for global, spherical data:
-> - **GraphCast**: Graph Neural Networks on icosahedral mesh   
-> - **Pangu-Weather**: 3D Swin Transformers   
-> - **FourCastNet v1**: Adaptive Fourier Neural Operators (AFNO) 
-> - **FourCastNet v2/3**: Spherical Fourier Neural Operators (SFNO) 
-> - **GenCast**: Diffusion models 
-> - **Aurora**: 3D Swin Transformer 
->
-> The distributed training patterns you learn here apply to all of these.
+    First, we start with a minimal but complete training loop — a simple U-Net predicting weather on ERA5-like data.
 
+    !!! note
+        We use a U-Net for familiarity, but production weather models typically use architectures such as:
 
-```python
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset
+        - **GraphCast** (graph neural networks on spherical meshes)  
+        - **Pangu-Weather / Aurora** (3D Swin Transformers)  
+        - **FourCastNet** (AFNO / SFNO)  
+        - **GenCast** (diffusion models)  
 
+        The distributed training patterns in this guide apply across all of these.
 
-# 1. Device
-device = torch.device("cuda:0")
+    ```python
+    import torch
+    import torch.nn as nn
+    from torch.utils.data import DataLoader, Dataset
 
+    # 1. Device
+    device = torch.device("cuda:0")
 
-# 2. Synthetic ERA5-like Dataset
-class ERA5Dataset(Dataset):
-    """
-    Simulates ERA5 reanalysis data for weather prediction.
-    
-    Input: atmospheric state at time t (multiple variables × pressure levels)
-    Target: atmospheric state at time t+6h
-    
-    Real ERA5 data shape at 0.25° resolution:
-    - 721 latitude × 1440 longitude
-    - Variables: temperature, humidity, geopotential, wind (u, v)
-    - Pressure levels: 13 levels (1000 hPa to 50 hPa)
-    """
-    def __init__(self, num_samples=1000, num_variables=5, num_levels=13, 
-                 lat=721, lon=1440):
-        self.num_samples = num_samples
-        self.channels = num_variables * num_levels  # e.g., 65 channels
-        self.lat = lat
-        self.lon = lon
-        
-    def __len__(self):
-        return self.num_samples
-    
-    def __getitem__(self, idx):
-        # Input: atmospheric state at time t
-        x = torch.randn(self.channels, self.lat, self.lon)
-        # Target: atmospheric state at time t+6h
-        y = torch.randn(self.channels, self.lat, self.lon)
-        return x, y
+    # 2. Synthetic ERA5-like Dataset
+    class ERA5Dataset(Dataset):
+        """
+        Simulates ERA5-like data for weather prediction.
+        """
+        def __init__(self, num_samples=1000, num_variables=5, num_levels=13, lat=721, lon=1440):
+            self.num_samples = num_samples
+            self.channels = num_variables * num_levels
+            self.lat = lat
+            self.lon = lon
 
+        def __len__(self):
+            return self.num_samples
 
-# 3. Simple U-Net Model
-class SimpleUNet(nn.Module):
-    """
-    A basic U-Net encoder-decoder for demonstration purposes.
-    
-    This is NOT representative of SOTA weather architectures — it's chosen
-    for familiarity so we can focus on distributed training patterns.
-    """
-    def __init__(self, in_channels=65, out_channels=65, base_dim=64):
-        super().__init__()
-        
-        # Encoder
-        self.enc1 = self._block(in_channels, base_dim)
-        self.enc2 = self._block(base_dim, base_dim * 2)
-        self.enc3 = self._block(base_dim * 2, base_dim * 4)
-        
-        # Bottleneck
-        self.bottleneck = self._block(base_dim * 4, base_dim * 8)
-        
-        # Decoder
-        self.up3 = nn.ConvTranspose2d(base_dim * 8, base_dim * 4, kernel_size=2, stride=2)
-        self.dec3 = self._block(base_dim * 8, base_dim * 4)
-        self.up2 = nn.ConvTranspose2d(base_dim * 4, base_dim * 2, kernel_size=2, stride=2)
-        self.dec2 = self._block(base_dim * 4, base_dim * 2)
-        self.up1 = nn.ConvTranspose2d(base_dim * 2, base_dim, kernel_size=2, stride=2)
-        self.dec1 = self._block(base_dim * 2, base_dim)
-        
-        # Output
-        self.out = nn.Conv2d(base_dim, out_channels, kernel_size=1)
-        self.pool = nn.MaxPool2d(2)
-        
-    def _block(self, in_ch, out_ch):
-        return nn.Sequential(
-            nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1),
-            nn.BatchNorm2d(out_ch),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1),
-            nn.BatchNorm2d(out_ch),
-            nn.ReLU(inplace=True),
-        )
-    
-    def forward(self, x):
-        # Encoder
-        e1 = self.enc1(x)
-        e2 = self.enc2(self.pool(e1))
-        e3 = self.enc3(self.pool(e2))
-        
-        # Bottleneck
-        b = self.bottleneck(self.pool(e3))
-        
-        # Decoder with skip connections
-        d3 = self.dec3(torch.cat([self.up3(b), e3], dim=1))
-        d2 = self.dec2(torch.cat([self.up2(d3), e2], dim=1))
-        d1 = self.dec1(torch.cat([self.up1(d2), e1], dim=1))
-        
-        return self.out(d1)
+        def __getitem__(self, idx):
+            x = torch.randn(self.channels, self.lat, self.lon)
+            y = torch.randn(self.channels, self.lat, self.lon)
+            return x, y
 
+    # 3. Simple U-Net
+    class SimpleUNet(nn.Module):
+        def __init__(self, in_channels=65, out_channels=65, base_dim=64):
+            super().__init__()
 
-# 4. Create dataset and dataloader
-# Using reduced resolution for single-GPU demo (full resolution requires distributed)
-train_dataset = ERA5Dataset(
-    num_samples=1000,
-    num_variables=5,      # T, q, z, u, v
-    num_levels=13,        # pressure levels
-    lat=181,              # ~1° resolution (downsampled from 0.25°)
-    lon=360,
-)
+            self.enc1 = self._block(in_channels, base_dim)
+            self.enc2 = self._block(base_dim, base_dim * 2)
+            self.enc3 = self._block(base_dim * 2, base_dim * 4)
 
-train_loader = DataLoader(
-    train_dataset, 
-    batch_size=4,         # Small batch due to large spatial dimensions
-    shuffle=True,
-    num_workers=4, 
-    pin_memory=True,
-)
+            self.bottleneck = self._block(base_dim * 4, base_dim * 8)
 
-# 5. Model
-model = SimpleUNet(in_channels=65, out_channels=65, base_dim=64)
-model = model.to(device)
+            self.up3 = nn.ConvTranspose2d(base_dim * 8, base_dim * 4, 2, 2)
+            self.dec3 = self._block(base_dim * 8, base_dim * 4)
 
-# 6. Optimizer
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-5)
+            self.up2 = nn.ConvTranspose2d(base_dim * 4, base_dim * 2, 2, 2)
+            self.dec2 = self._block(base_dim * 4, base_dim * 2)
 
-# 7. Loss function
-def latitude_weighted_mse(pred, target):
-    """
-    MSE weighted by cosine of latitude.
-    Accounts for grid cell area differences on a sphere.
-    """
-    lat = torch.linspace(90, -90, pred.shape[-2], device=pred.device)
-    weights = torch.cos(torch.deg2rad(lat))
-    weights = weights.view(1, 1, -1, 1)  # (1, 1, lat, 1)
-    weights = weights / weights.mean()   # normalize
-    
-    return (weights * (pred - target) ** 2).mean()
+            self.up1 = nn.ConvTranspose2d(base_dim * 2, base_dim, 2, 2)
+            self.dec1 = self._block(base_dim * 2, base_dim)
 
-# 8. Training loop
-model.train()
-for epoch in range(10):
-    epoch_loss = 0.0
-    for data, target in train_loader:
-        data, target = data.to(device), target.to(device)
+            self.out = nn.Conv2d(base_dim, out_channels, kernel_size=1)
+            self.pool = nn.MaxPool2d(2)
 
-        optimizer.zero_grad()
-        output = model(data)
-        loss = latitude_weighted_mse(output, target)
-        loss.backward()
-        optimizer.step()
-        
-        epoch_loss += loss.item()
+        def _block(self, in_ch, out_ch):
+            return nn.Sequential(
+                nn.Conv2d(in_ch, out_ch, 3, padding=1),
+                nn.BatchNorm2d(out_ch),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(out_ch, out_ch, 3, padding=1),
+                nn.BatchNorm2d(out_ch),
+                nn.ReLU(inplace=True),
+            )
 
-    avg_loss = epoch_loss / len(train_loader)
-    print(f"Epoch {epoch+1} | Loss: {avg_loss:.6f}")
-```
+        def forward(self, x):
+            e1 = self.enc1(x)
+            e2 = self.enc2(self.pool(e1))
+            e3 = self.enc3(self.pool(e2))
+
+            b = self.bottleneck(self.pool(e3))
+
+            d3 = self.dec3(torch.cat([self.up3(b), e3], dim=1))
+            d2 = self.dec2(torch.cat([self.up2(d3), e2], dim=1))
+            d1 = self.dec1(torch.cat([self.up1(d2), e1], dim=1))
+
+            return self.out(d1)
+
+    # 4. Dataset + DataLoader
+    train_dataset = ERA5Dataset(
+        num_samples=1000,
+        num_variables=5,
+        num_levels=13,
+        lat=181,
+        lon=360,
+    )
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=4,
+        shuffle=True,
+        num_workers=4,
+        pin_memory=True,
+    )
+
+    # 5. Model
+    model = SimpleUNet().to(device)
+
+    # 6. Optimizer
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-5)
+
+    # 7. Loss
+    def latitude_weighted_mse(pred, target):
+        lat = torch.linspace(90, -90, pred.shape[-2], device=pred.device)
+        weights = torch.cos(torch.deg2rad(lat)).view(1, 1, -1, 1)
+        weights = weights / weights.mean()
+        return (weights * (pred - target) ** 2).mean()
+
+    # 8. Training loop
+    model.train()
+    for epoch in range(10):
+        epoch_loss = 0.0
+
+        for data, target in train_loader:
+            data = data.to(device)
+            target = target.to(device)
+
+            optimizer.zero_grad()
+            output = model(data)
+            loss = latitude_weighted_mse(output, target)
+            loss.backward()
+            optimizer.step()
+
+            epoch_loss += loss.item()
+
+        print(f"Epoch {epoch+1} | Loss: {epoch_loss / len(train_loader):.6f}")
+    ```
+
+---
 
 ## What Goes on GPU Memory (VRAM) in Training?
 When training a deep learning model, the GPU memory (VRAM) acts as a high-speed workspace where several distinct components must coexist. If the total memory required by these components exceeds your VRAM capacity, you will encounter the **CUDA Out of Memory (OOM)** error.
@@ -206,7 +189,7 @@ During training, four specific components compete for your GPU's memory:
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Why Weather/Climate AI Models Are Memory-Hungry
+### Why Weather/Climate AI Models Are Memory-Hungry?
 
 Weather and climate AI models are significantly more memory-intensive than most deep learning models used in computer vision or natural language processing. This is because the atmosphere and Earth system are high-dimensional physical systems that must be represented across space, vertical structure, multiple physical variables, and time. Together, these factors produce extremely large tensors and intermediate activations during training and inference.
 
@@ -259,11 +242,11 @@ Activations (single step): ~20 GB per sample (depending on architecture)
 With 4-step rollout:       ~80  GB per sample
 ```
 
-!!! tip "In Geoscientific AI, activations -- not model parameters -- are the bottleneck. You can have a "small" model (low parameter count) that is still impossible to train on a single GPU because the spatial activations are too massive to fit in VRAM."
-
+!!! tip "In Geoscientific AI, activations -- not model parameters -- are the bottleneck."
+    In ESS workflows, you can have a "small" model (low parameter count) that is still impossible to train on a single GPU because the spatial activations are too massive to fit in VRAM. This is the opposite of typical NLP/vision models, where parameters are the main memory bottleneck. 
 
 ## The Three Walls
-At some point, your single-GPU training hits one of three limits:
+When training on a single GPU, at some point you hit one of three limits:
 
 ### Wall 1: Training Too Slow
 Your model fits on one GPU, but training on 40 years of ERA5 (approx. 5 Petabytes) would take months and you cannot increase batch sizes because you hit OOM. 

@@ -13,35 +13,38 @@ For a complete overview with examples, see the [PyTorch FSDP Tutorial](https://p
 
 FSDP shards model parameters across GPUs so that each GPU stores only 1/N of the model, where N is the number of GPUs.
 
-During training, parameters temporarily transition between two states:
-* Sharded state – parameters are split across GPUs (memory efficient)
-* Unsharded state – full parameters are reconstructed for computation
+During training, parameters temporarily transition between two states:    
+1. **Sharded state** – parameters are split across GPUs
+2. **Unsharded state** – full parameters are reconstructed for computation  
 
 Here is the high-level lifecycle of a parameter shard during training with 4 GPUs:
 
-1. At rest — each GPU holds 1/4 of params: 
-   GPU 0: [shard 0] 
-   GPU 1: [shard 1] 
-   GPU 2: [shard 2] 
-   GPU 3: [shard 3] 
+1. At the beginning — each GPU holds 1/4 of params:   
+   GPU 0: [shard 0]    
+   GPU 1: [shard 1]   
+   GPU 2: [shard 2]   
+   GPU 3: [shard 3]   
 
-2. Before forward — all-gather to reconstruct full params:   
-   GPU 0: [shard 0 | shard 1 | shard 2 | shard 3]  (temporary)  
-   GPU 1: [shard 0 | shard 1 | shard 2 | shard 3]  (temporary)  
+2. Before forward — `all-gather` is used to reconstruct full params:      
+   GPU 0: [shard 0 | shard 1 | shard 2 | shard 3]  (temporary)     
+   GPU 1: [shard 0 | shard 1 | shard 2 | shard 3]  (temporary)    
    GPU 2: [shard 0 | shard 1 | shard 2 | shard 3]  (temporary)  
-   GPU 3: [shard 0 | shard 1 | shard 2 | shard 3]  (temporary)  
+   GPU 3: [shard 0 | shard 1 | shard 2 | shard 3]  (temporary)   
 
-3. Compute forward pass (using full params) 
+    !!! info
+        `all-gather` is covered in detail in the [PyTorch Collective Communication chapter](03_collective_communication.md#all-gather) — it gathers shards from all GPUs to reconstruct the full parameter tensor on each GPU.
 
-4. After forward — discard non-local shards:    
+3. Now, we can compute forward pass, using full params. 
+
+4. After forward pass, we can discard non-local shards to save memory and return to sharded state, i.e. :     
    GPU 0: [shard 0]  (back to 1/4)   
    GPU 1: [shard 1]  (back to 1/4)  
    GPU 2: [shard 2]  (back to 1/4)  
    GPU 3: [shard 3]  (back to 1/4)   
 
-5. Before backward — all-gather again   
+5. Before backward pass, we need to `all-gather` again.   
 
-6. After backward — reduce-scatter gradients:
+6. After backward pass, we need to `reduce-scatter` gradients across GPUs so that each GPU only holds the gradients for its shard:
    GPU 0: [grad shard 0]  (already reduced + sharded)  
    GPU 1: [grad shard 1]  (already reduced + sharded)   
    GPU 2: [grad shard 2]  (already reduced + sharded)   

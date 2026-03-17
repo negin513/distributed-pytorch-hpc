@@ -62,43 +62,41 @@ activations for all micro-batches simultaneously (high memory), and has a large 
 
 The illustration below shows the forward and backward passes for 4 stages and 4 micro-batches. The forward pass processes all micro-batches sequentially, followed by the backward pass, which also processes all micro-batches sequentially. This results in a bubble fraction of 75%, meaning that 75% of the time, some GPUs are idle.
 
-![GPipe Pipeline Parallelism with 4 devices and 4 microbatches](https://www.researchgate.net/publication/362249737/figure/fig3/AS:1181989436702720@1658819650017/llustration-of-Pipeline-Parallelism-in-GPipe-with-4-devices-and-4-microbatches-Image.ppm)
+![GPipe](images/gpipe.png)
 
-```
 
 ### 1F1B (One Forward, One Backward)
-
-Interleaves forward and backward passes. Each stage starts backward as
-soon as possible, reducing peak activation memory and bubble time. This is the most efficient schedule in practice.
+1F1B is a pipeline parallelism scheduling strategy that interleaves forward and backward passes across microbatches to reduce the "pipeline bubble". In 1F1B, each stage starts backward as soon as possible, reducing peak activation memory and bubble time. This is the most efficient schedule in practice.
 
 The image below illustrates the 1F1B schedule for 4 stages and 4 micro-batches in PipeDream. In this schedule, as soon as the first micro-batch completes its forward pass on GPU 0, it immediately starts its backward pass while GPU 0 begins processing the second micro-batch. This interleaving continues, allowing for a much smaller bubble fraction of 12.5%, meaning that only 12.5% of the time, some GPUs are idle.
 
-![1F1B microbatch scheduling in PipeDream](https://www.researchgate.net/publication/362249737/figure/fig4/AS:1181989436690441@1658819650284/llustration-of-1F1B-microbatch-scheduling-in-PipeDream-Image-based-on-48.png)
+![1F1B](images/1F1B.png)
 
 1F1B is preferred in practice because it uses less memory with the same
 bubble overhead.
 
 ## How Stages Communicate
 
+In pipeline parallelism, the model is split into sequential chunks **(stages)**, each assigned to a different GPU (or group of GPUs). 
+
+The stages need to pass activations forward and gradients backward, and this happens through point-to-point (P2P) communication — specifically `torch.distributed.send()` and `torch.distributed.recv()` (or their async variants `isend`/`irecv`).
+
+
 Pipeline parallelism uses **point-to-point send/recv** between adjacent
 stages:
 
-```
-Forward:
-GPU 0 (layers 1-10)  ──send activations──►  GPU 1 (layers 11-20)
-                                              ──send activations──►  GPU 2
+<figure markdown="span">
+  ![Pipeline Parallelism - How Stages Communicate](images/pipeline-inference.png)
+  <figcaption>Illustration of pipeline parallelism showing how stages communicate via point-to-point send/recv between adjacent GPUs. (Source: <a href="https://afmck.in/posts/2023-02-26-parallelism/">afmck.in</a>)</figcaption>
+</figure>
 
-Backward:
-GPU 2  ──send gradients──►  GPU 1
-                             ──send gradients──►  GPU 0
-```
-
-This is different from DDP/FSDP (all-reduce, all-gather) — PP
-communication is between **pairs** of GPUs, not all GPUs at once.
+!!! note
+    In pipeline parallelism, communication is between **pairs** of GPUs, not all GPUs at once. This is different from DDP/FSDP (all-reduce, all-gather). Each stage only communicates with its immediate neighbors, which can reduce communication overhead compared to strategies that require global synchronization. However, it also means that the pipeline can be more sensitive to imbalances between stages, which is why micro-batching and scheduling strategies like 1F1B are important to keep all stages busy.
 
 ## Manual Pipeline Splitting
 
-The simplest approach is manual splitting; i.e. you decide which layers go on which GPU:
+Manual pipeline splitting is the simplest form of pipeline parallelism. You assign different layers to different GPUs by hand and explicitly move tensors between devices in the forward pass.
+Here's a simple example with two stages:
 
 ```python
 class Stage0(nn.Module):
@@ -157,8 +155,8 @@ output = schedule.step(input)
 ```
 
 ## Bubble Fraction Formula
-
-The key metric for pipeline parallelism efficiency:
+The **bubble fraction** quantifies how much time GPUs spend idle due to the pipeline fill and drain phases. It's the single most important metric for evaluating pipeline parallelism efficiency.
+ 
 
 ```
 bubble_fraction = (num_stages - 1) / num_micro_batches

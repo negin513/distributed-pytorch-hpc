@@ -17,21 +17,21 @@ TP partitions large weight matrices across GPUs. For a linear layer `Y = XW`, th
 
 The weight matrix is split along columns across GPUs. Each GPU receives an identical copy of the input and performs matrix multiplication on its column shard. The partial outputs are then concatenated via an all-gather operation.
 
-![Column-wise Parallel](../../docs/images/tp_colwise.jpeg)
+![Column-wise Parallel](../images/tp_colwise.jpeg)
 *Figure 2: Column-wise parallel splits the weight matrix W along columns. Each GPU computes a partial output, then results are gathered.*
 
 ### Row-Parallel Linear
 
 The weight matrix is split along rows across GPUs. The input is divided along the inner dimension so each GPU has a corresponding shard. Each GPU computes a partial result, and outputs are combined via an all-reduce summation.
 
-![Row-wise Parallel](../../docs/images/tp_rowwise.jpeg)
+![Row-wise Parallel](../images/tp_rowwise.jpeg)
 *Figure 3: Row-wise parallel splits the weight matrix W along rows. Each GPU computes a partial sum, then results are reduced.*
 
 ### Combined Column + Row Parallelism
 
 In practice, sequential linear layers (e.g., in an MLP block) use both methods together. The column-wise output feeds directly into the row-wise layer **without any data transfer between GPUs**. Element-wise operations like activation functions also apply without communication overhead. This is the key insight from the [Megatron-LM paper](https://arxiv.org/abs/1909.08053).
 
-![Combined Column and Row Parallel](../../docs/images/tp_combined.jpeg)
+![Combined Column and Row Parallel](../images/tp_combined.jpeg)
 *Figure 4: Combined approach pairs column-wise and row-wise parallelism to minimize communication to a single all-reduce per block.*
 
 

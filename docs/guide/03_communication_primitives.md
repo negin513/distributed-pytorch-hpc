@@ -20,8 +20,8 @@ Each process is identified by three numbers (assigned by the launcher):
 | `LOCAL_RANK` | ID within this node | 0 to GPUs_per_node-1 |
 
 
-For example, with 2 nodes and 4 GPUs each, you have 8 processes with `WORLD_RANK`s 0-7. Each node has local `LOCAL_RANK`s 0-3. The `LOCAL_RANK` is used to assign a GPU to each process, while the `WORLD_RANK` is used for coordination (e.g., rank 0 handles logging and checkpointing). 
-`WORLD_SIZE` is the total number of processes (8 in this example) and is used for scaling learning rates and calculating effective batch sizes.
+For example, with 2 nodes and 2 GPUs each, you have 4 processes with `WORLD_RANK`s 0-3. Each node has local `LOCAL_RANK`s 0-1. The `LOCAL_RANK` is used to assign a GPU to each process, while the `WORLD_RANK` is used for coordination (e.g., rank 0 handles logging and checkpointing). 
+`WORLD_SIZE` is the total number of processes (4 in this example) and is used for scaling learning rates and calculating effective batch sizes.
 
 
 
@@ -30,14 +30,12 @@ For example, with 2 nodes and 4 GPUs each, you have 8 processes with `WORLD_RANK
   <figcaption>Figure 1: World Rank vs Local Rank across two nodes with 4 GPUs each. (Source: Medium)</figcaption>
 </figure>
 
-* You use `LOCAL_RANK` to assign a GPU: `torch.cuda.set_device(LOCAL_RANK)`.
-* You use `WORLD_RANK` for coordination: rank 0 typically handles logging,
+* You need to use `LOCAL_RANK` to assign a GPU: `torch.cuda.set_device(LOCAL_RANK)`.
+* You need to use `WORLD_RANK` for coordination: rank 0 typically handles logging,
 checkpointing, and data download.
-* `WORLD_SIZE` is used for scaling learning rates and calculating effective batch sizes.
-effective batch size = `batch_size × WORLD_SIZE`.
+* `WORLD_SIZE` is used for scaling learning rates and calculating effective batch sizes. For example, if your per-GPU batch size is 16 and you have `WORLD_SIZE=4`, your effective batch size is `16 × 4 = 64`.
 
-
-The above three variables are set by your launcher (e.g., `torchrun`, `mpiexec`) when you start your distributed job. The launcher ensures that each process gets the correct rank and world size, allowing them to coordinate properly.
+The above three variables are set by your launcher (e.g., `torchrun`, `mpiexec`, `mpirun`) when you start your distributed job. The launcher ensures that each process gets the correct rank and world size, allowing them to coordinate properly.
 
 ## Launchers
 
@@ -50,12 +48,10 @@ To start a distributed training job, you use a launcher that spawns multiple pro
 | `torchrun` | Single-node multi-GPU | `torchrun --nproc_per_node=4 train.py` |
 | `mpiexec` or `mpirun` | Multi-node | `mpiexec -n 8 --ppn 4 --cpu-bind none python train.py` |
 
- For multi-node training, `mpiexec` or `mpirun` can be used, but you need to ensure that the environment variables are correctly set across nodes.
-
 You can also use `mpiexec` + `torchrun` for multi-node training, but this requires additional setup to ensure that the environment variables are correctly propagated across nodes.
 
 
-### `torchrun`
+### `torchrun` -- Single Node Multi-GPU Training
 `torchrun` is the recommended launcher for single-node multi-GPU training. It automatically sets `LOCAL_RANK`, `WORLD_RANK`, and `WORLD_SIZE` for each process.
 
 For example, if you have 4 GPUs on a single node, you can launch your training script with:
@@ -65,13 +61,14 @@ torchrun --nproc_per_node=4 train.py
 ```
 This will start 4 processes, each with `LOCAL_RANK` 0-3 and `WORLD_RANK` 0-3, and `WORLD_SIZE` 4.
 
+
 For multi-node training, using `torchrun` requires additional setup to ensure that the environment variables are correctly propagated across nodes. This can be done with the `--rdzv_backend` and `--rdzv_endpoint` options, but it is often simpler to use `mpiexec` for multi-node training.
 
-Essentially, you have to run `torchrun` on each node, and ensure that the `WORLD_RANK` and `WORLD_SIZE` are correctly set across nodes. This can be complex, which is why `mpiexec` is often preferred for multi-node training.
+Essentially, you have to run `torchrun` on each node, and ensure that the `WORLD_RANK` and `WORLD_SIZE` are correctly set across nodes. It will look something like this:
 
 ```
 # On Node 1 -- (the master node)
-torhcrun --nodes 2
+torchrun --nodes 2
     --nproc_per_node=4 \
     --node_rank=0 \
     --master_addr=node1 \ # IP or hostname of the master node
@@ -87,24 +84,26 @@ torchrun --nodes 2
     train.py
 ```
 
-In practice, for multi-node training, it's often simpler to use `mpiexec` or `mpirun`, which handles the multi-node coordination for you.
+The above setup can be error-prone, which is why using `mpiexec` or `mpirun` for multi-node training is often recommended, as it handles the multi-node coordination for you. 
+
+### `mpiexec` or `mpirun` -- Multi-Node Training
+
+For multi-node training, `mpiexec` (or `mpirun`) is the most common launcher. It uses MPI to launch one process per GPU across multiple nodes and sets the appropriate environment variables for each process. For example, if you have 2 nodes with 4 GPUs each (8 total), you can launch your training script with:
 
 ```
 mpiexec -n 8 --ppn 4 --cpu-bind none python train.py
 ``` 
 
-But you need to ensure that your training script correctly initializes the process group and sets the device based on the environment variables set by `mpiexec`.
+But you need to ensure that your training script correctly initializes the process group and sets the device based on the environment variables set by your MPI flavor (e.g., OpenMPI, Cray MPICH).
 
 The `utils/distributed.py` file in this repository provides a `setup_distributed()` function that abstracts away the details of initializing the process group and setting the device, making it easier to write distributed training scripts that can work with different launchers, such as `torchrun`, OpenMPI, or Cray MPICH.
 
 This table summarizes the launchers and their environment variable handling:
 
-
 | Launcher | WORLD_RANK | LOCAL_RANK | WORLD_SIZE |
 |----------|------|------------|------------|
 | torchrun | `RANK` | `LOCAL_RANK` | `WORLD_SIZE` |
 | OpenMPI | `OMPI_COMM_WORLD_RANK` | `OMPI_COMM_WORLD_LOCAL_RANK` | `OMPI_COMM_WORLD_SIZE` |
-| SLURM | `SLURM_PROCID` | `SLURM_LOCALID` | `SLURM_NTASKS` |
 | Cray MPICH | `PMI_RANK` | `PMI_LOCAL_RANK` | `PMI_SIZE` |
 
 
@@ -136,7 +135,7 @@ tp_group_2 = dist.new_group(ranks=[4, 5, 6, 7])
 
 ### Backends
 
-A **backend** is the communication layer used by PyTorch to exchange data between processes (e.g., GPUs or nodes). Different backends are optimized for different hardware and use cases.
+A **backend** is the communication layer used by PyTorch to exchange data between processes (e.g., GPUs or nodes). Different backends are optimized for different hardware and use cases. The table below summarizes the common backends that pyTorch supports:
 
 | Backend | Hardware        | Typical Use Case                          |
 |---------|----------------|------------------------------------------|
@@ -150,32 +149,32 @@ A **backend** is the communication layer used by PyTorch to exchange data betwee
 !!! note "Notes for Derecho"
     On Derecho, you should use **`nccl`** for GPU communication. However, proper performance depends on having the correct environment and network configuration.
 
-    - Derecho uses **Cray HPE Slingshot 11**, which requires NCCL to be built or configured with Slingshot support.
-    - The PyTorch wheel provided in your `environment.yaml` includes NCCL support compatible with Slingshot 11.
+    - Derecho uses **Cray HPE Slingshot**, which requires NCCL to be built or configured with Slingshot support.
+    - The PyTorch wheel provided in your `environment.yaml` in this repo includes NCCL support compatible with Slingshot 11.
     - You should verify that:
         - The correct NCCL library is being used at runtime  
         - Environment variables (e.g., networking and transport settings) are properly configured  
         - The runtime is not falling back to a slower backend (e.g., `gloo`)
 
 !!! warning
-    Misconfigured NCCL environments can silently degrade performance (e.g., falling back to TCP instead of high-speed interconnects).
+    Misconfigured NCCL environments can silently degrade performance significantly (e.g., falling back to TCP instead of high-speed interconnects).
 
 ---
 
-In most cases, once NCCL is correctly configured, it will automatically use the fastest available transport on the system.
-
-
-
-## The Five Collective Operations
+## The Most Common Collective Operations
 
 **Collective operations** (or "collectives") are communication patterns where multiple ranks participate together. Every distributed training strategy is built from these primitives.
+
+The NVIDIA NCCL library provides highly optimized implementations of these collectives for GPU communication. You can find more details in the [NCCL documentation](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/collectives.html).
+
+The most common collectives you'll see in distributed training are:
 
 ### 1. All-Reduce
 
 Every GPU starts with a value. After all-reduce operations, every GPU has the
 **sum** (or average, min, max) of all values across GPUs.
 
-This is the core of DDP, where gradients are all-reduced after each backward pass to compute the average gradient across all GPUs before the optimizer step.
+all-reduce is the core of DDP, where gradients are all-reduced after each backward pass to compute the average gradient across all GPUs before the optimizer step.
 
 <figure markdown="span">
   ![All-Reduce](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/_images/allreduce.png)
@@ -185,11 +184,10 @@ This is the core of DDP, where gradients are all-reduced after each backward pas
 
 ### 2. All-Gather
 
-Each GPU has a piece. After all-gather, every GPU has **all the pieces
+Each GPU has a piece of data. After all-gather, every GPU has **all the pieces
 concatenated**. 
 
-FSDP uses this to reassemble sharded parameters before
-forward/backward.
+FSDP uses this to reassemble sharded parameters before forward/backward passes, and TP uses it to gather sharded activations across GPUs.
 
 
 <figure markdown="span">
@@ -209,9 +207,9 @@ GPU 3: [D]                          GPU 3: [A, B, C, D]
 
 ### 3. Reduce-Scatter
 
-The inverse of all-gather. Reduces (sums) data and **scatters** the
-result so each GPU gets one piece. FSDP uses this after backward to
-produce sharded gradients.
+Reduce-Scatter is the inverse of all-gather. It reduces (sums) data and **scatters** the result so each GPU gets one piece. 
+
+FSDP uses this after backward to produce sharded gradients.
 
 <figure markdown="span">
   ![Reduce-Scatter](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/_images/reducescatter.png)
@@ -226,11 +224,16 @@ GPU 2: [c0, c1, c2, c3]      (sum)               GPU 2: [a2+b2+c2+d2]
 GPU 3: [d0, d1, d2, d3]                          GPU 3: [a3+b3+c3+d3]
 ```
 
-!!! note: The all-gather + reduce-scatter pair is a powerful pattern for sharding data across GPUs while still allowing for global operations. FSDP uses this pattern to shard parameters and gradients, while TP can use it to shard activations.
-<figure markdown="span">
-  ![FSDP All-Gather and Reduce-Scatter](https://engineering.fb.com/wp-content/uploads/2021/07/FSDP-graph-2a.png)
-  <figcaption>Figure 5: FSDP uses All-Gather to reassemble parameters before forward/backward, and Reduce-Scatter to shard gradients afterward. (Source: Facebook FSDP paper)</figcaption>
-</figure>
+!!! note "All-Gather + Reduce-Scatter Pattern"
+    The **all-gather + reduce-scatter** pair is a powerful pattern for sharding tensors across GPUs while still supporting global computation.
+
+    **FSDP** uses this pattern to shard model states: it all-gathers parameter shards before forward/backward computation and reduce-scatters gradients during the backward pass.  
+    In **tensor-parallel training**, similar all-gather / reduce-scatter patterns are also used in some variants—especially **sequence parallelism** and related activation-sharding schemes.
+
+    <figure markdown="span">
+      ![FSDP All-Gather and Reduce-Scatter](https://engineering.fb.com/wp-content/uploads/2021/07/FSDP-graph-2a.png)
+      <figcaption>Figure 5: FSDP uses all-gather to materialize parameters for computation and reduce-scatter to return gradients to sharded form. (Source: PyTorch/FSDP documentation and Meta FSDP materials)</figcaption>
+    </figure>
 
 
 ### 4. Broadcast
@@ -248,13 +251,14 @@ Used for syncing initial model weights or distributing hyperparameters.
 ```
 Before:           Operation:         After:
 GPU 0: [X]                          GPU 0: [X]
-GPU 1: [ ]     ── broadcast ──►    GPU 1: [X]
-GPU 2: [ ]        (from 0)         GPU 2: [X]
+GPU 1: [ ]     ── broadcast ──►     GPU 1: [X]
+GPU 2: [ ]        (from 0)          GPU 2: [X]
 GPU 3: [ ]                          GPU 3: [X]
 ```
 
 
 ### 5. Point-to-Point (Send/Recv)
+
 
 Direct communication between two specific GPUs. Pipeline parallelism
 uses this: stage N sends activations to stage N+1.
@@ -270,7 +274,7 @@ In All-to-All, each GPU transmits unique data to every other GPU. To achieve thi
 
 ## Hardware Topology Matters
 
-The speed of these collective operations depends entirely on the hardware connecting your GPUs. On virtually all modern supercomputers, **intra-node communication** (GPUs within the same server, connected via NVLink) is orders of magnitude faster than **inter-node communication** (servers connected via network fabrics like InfiniBand or Slingshot). 
+The speed of these collective operations depends entirely on the hardware connecting your GPUs. On virtually all modern supercomputers, **intra-node communication** (GPUs within the same node, connected via NVLink) is orders of magnitude faster than **inter-node communication** (GPUs across different nodes, connected via network fabrics like InfiniBand or Slingshot). 
 
 This physical reality dictates how you map your distributed strategy to the hardware.
 
@@ -295,10 +299,10 @@ directly:
 mpiexec -n 4 --ppn 4 --cpu-bind none python tests/all_reduce_test.py
 ```
 
+Also, see [nccl-tests](https://github.com/NVIDIA/nccl-tests) for more comprehensive benchmarks of NCCL collectives.
+
 ## What's Next?
 
-Now that you understand the communication building blocks, Chapter 4
-puts them to use with the simplest and most common distributed strategy:
-Data Parallel (DDP).
+Now that you understand the communication building blocks, Chapter 4 puts them to use with the simplest and most common distributed strategy, ie.e. Data Parallel (DDP).
 
 **Next:** [Chapter 4 — Data Parallel (DDP)](04_data_parallel_ddp.md)

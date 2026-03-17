@@ -8,8 +8,7 @@ c) the input data doesn't fit.
 
 We also learned [what goes on GPU memory (VRAM) during training](01_single_gpu_baseline.md#what-goes-on-gpu-memory-vram-in-training) in terms of model parameters, activations, gradients, and optimizer state, and why we need to scale out to multiple GPUs to break through these walls.
 
-Distributed training strategies are techniques to break through these walls by splitting the work across multiple GPUs. Each strategy has different tradeoffs in terms of what it splits (data, model, or both), how it communicates between GPUs, and how much memory it saves.
-
+Distributed training strategies are techniques to break through these walls by splitting the work across multiple GPUs. Each strategy has different tradeoffs in terms of what it splits (data, model, or both), how it communicates between GPUs, and how much memory it saves. It is important to remember that not all of these strategies are relevant to every use case or model architecture. 
 
 This chapter gives an overview of the distributed training strategies we'll cover in the rest of the guide, and how they relate to these walls.
 

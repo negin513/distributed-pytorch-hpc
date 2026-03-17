@@ -2,17 +2,16 @@
 
 Before we distribute anything, we need a solid single-GPU training script to serve as our starting point. Every distributed strategy in this guide is a modification of this baseline.
 
+But first let's look at the typical AI/ML workflow in geosciences to understand where distributed training fits in.
+
 <figure markdown="span">
   ![Typical AI/ML Workflow in Geosciences](../images/typical_ai_ml_workflow_geosciences.png)
   <figcaption>Figure 1: Typical AI/ML workflow in Geosciences</figcaption>
 </figure>
 
-A typical AI/ML pipeline in geosciences begins with large observational or reanalysis datasets stored in formats such as Zarr, NetCDF, COG, and HDF. These datasets are ingested and preprocessed using libraries such as xarray, Dask, CuPy, and NumPy, and—if needed—regridded.
+A typical AI/ML workflow in geosciences begins with large observational or reanalysis datasets stored in formats such as Zarr, NetCDF, COG, or HDF. These datasets are often multi-dimensional, spatiotemporal, and extremely large and may include variables such as temperature, wind fields, pressure, and precipitation across many vertical levels and time steps.
 
-The processed data is then fed into deep learning frameworks like PyTorch or TensorFlow for model training and validation on GPUs. Once trained, the model can be deployed for inference tasks such as weather forecasting, climate downscaling, or hazard prediction.
-
-In this guide, we focus on the **training stage** and how to scale it across multiple GPUs using different distributed training strategies.
-
+These datasets are ingested and preprocessed using libraries such as xarray, Dask, CuPy, and NumPy, and—if needed—regridded. The processed data is then fed into deep learning frameworks like PyTorch or TensorFlow, where models (e.g., CNNs, U-Nets, Transformers) are trained and validated on GPUs. Once trained, the model can be deployed for inference tasks such as weather forecasting, climate downscaling, or hazard prediction. In this guide, we focus on the **training stage** and how to scale it across multiple GPUs using different distributed training strategies.
 
 ---
 
@@ -160,14 +159,21 @@ In this guide, we focus on the **training stage** and how to scale it across mul
 ## What Goes on GPU Memory (VRAM) in Training?
 When training a deep learning model, the GPU memory (VRAM) acts as a high-speed workspace where several distinct components must coexist. If the total memory required by these components exceeds your VRAM capacity, you will encounter the **CUDA Out of Memory (OOM)** error.
 
-During training, four specific components compete for your GPU's memory. As shown in the diagram below, the relative size of these components can vary significantly depending on the model architecture and input data, but in weather/climate models, **activations are often the dominant consumer of GPU memory**.
+During training, several key components compete for GPU memory:
+
+- **Model parameters** (weights)   
+- **Gradients** (computed during backpropagation)  
+- **Optimizer states** (e.g., momentum and variance in Adam)  
+- **Activations** (intermediate outputs stored for backpropagation)  
 
 <figure markdown="span">
   ![GPU Memory Components](../images/gpu_memory_components.png)
   <figcaption>Figure 2: What lives in GPU memory during training</figcaption>
 </figure>
 
+The relative size of these components can vary significantly depending on the model architecture, numerical precision, and input data characteristics. But in many geoscientific AI models, **activations are the dominant memory consumer** due to the large spatial dimensions and deep architectures used to capture complex dynamics.
 
+----------
 
 ### Why Weather/Climate AI Models Are Memory-Hungry?
 
@@ -175,11 +181,13 @@ Weather and climate AI models are significantly more memory-intensive than most 
 
 - To capture fine-scale weather features, models often use high-resolution grids. For example, ERA5 reanalysis data at 0.25° resolution has a grid of 721 latitudes × 1440 longitudes, resulting in over 1 million spatial points per variable per level. 
 
+- Forecasting models typically ingest multiple past timesteps to learn atmospheric dynamics, introducing an additional **time dimension**.
+
 - The atmosphere must be modeled in the vertical dimension as well. For example, ERA5 resolves the atmosphere with up to 137 vertical levels from the surface to ~80 km, making atmospheric data inherently three-dimensional.
 
 - Instead of just 3 channels like RGB images, weather models often include dozens of physical variables such as temperature, pressure, humidity, wind components, and geopotential height. Some atmospheric datasets include **tens of variables across multiple pressure levels**, further increasing tensor size.
 
-- Forecasting models typically ingest multiple past timesteps to learn atmospheric dynamics, introducing an additional **time dimension**.
+----------
 
 Together, these factors produce extremely large input tensors, often with dimensions like:
 ```
@@ -192,7 +200,7 @@ For example, a single input sample of ERA-5 at 0.25° resolution with 5 variable
 |------------------|---------|--------------------------------------|
 | Latitude         | 721     |       |
 | Longitude        | 1440    |     |
-| Pressure levels  | 13     |  subset of pressure levels |
+| Pressure levels  | 13     |  Only asubset of pressure levels |
 | Variables/level  | 5       | T, u, v, z, q                        |
 | Surface variables| 8       | t2m, u10, v10, msl, tcwv, …         |
 | **Total channels** | **73** | (13 levels × 5 vars) + 8 surface    |
@@ -215,29 +223,34 @@ During training, the GPU must store the output of every intermediate layer (acti
 
 - **Attention mechanisms** in transformer-based models (Pangu-Weather, Aurora) store attention maps that scale quadratically with sequence length. On a 721 × 1440 grid, even windowed attention (e.g., 3D Swin Transformer) generates substantial intermediate tensors.
 
-To put this in perspective:
+To put this in perspective, here are some rough estimates of memory usage for a single sample during training:
 ```
 Input:                     ~303 MB per sample
 Activations (single step): ~20 GB per sample (depending on architecture)
 With 4-step rollout:       ~80  GB per sample
 ```
 
-!!! tip "In Geoscientific AI, activations -- not model parameters -- are the bottleneck."
-    In ESS workflows, you can have a "small" model (low parameter count) that is still impossible to train on a single GPU because the spatial activations are too massive to fit in VRAM. This is the opposite of typical NLP/vision models, where parameters are the main memory bottleneck. 
+!!! tip "Key takeaway"
+
+    In geoscientific AI, activations -- not model parameters -- are the primary memory bottleneck.
+
+    In ESS workflows, you can have a "small" model (low parameter count) that is still impossible to train on a single GPU because the spatial activations are too massive to fit in VRAM. This is the opposite of typical NLP/vision models, where parameters are the main memory bottleneck.
+
+
 
 ## The Three Walls
-When training on a single GPU, at some point you hit one of three limits:
+When training on a single GPU, at some point you hit one of the following three limits:
 
 ### Wall 1: Training Too Slow
-Your model fits on one GPU, but training on 40 years of ERA5 (approx. 5 Petabytes) would take months and you cannot increase batch sizes because you hit OOM. 
+Your model fits on one GPU, but training on 40 years of ERA5 (approx. 5 Petabytes) would take months and you cannot increase batch sizes because you hit OOM.   
 **Solution:** Split data across GPUs and train in parallel (DDP).
 
 ### Wall 2: Data Too Large (Spatial)
-Your input data is too large for a single GPU -- this is especially common in weather/climate. For example, a single 0.1° global sample won't even fit in memory!
+Your input data is too large for a single GPU -- this is especially common when training on high-res data in weather/climate. Even with `batch_size=1`, the spatial dimensions of the input and activations exceed GPU memory.  
 **Solution:** Split the input data spatially across GPUs (Domain Parallelism).
 
 ### Wall 3: Model Too Large
-Your model's parameters + gradients + optimizer state exceed GPU memory. Large foundation models for weather (Aurora, Prithvi) or hybrid physics-ML models (NeuralGCM) can exceed even 80 GB A100s. In this case, shard the model across GPUs (FSDP, Tensor Parallelism, Pipeline Parallelism) or use memory-efficient techniques like gradient checkpointing.
+Your model's parameters + gradients + optimizer state exceed GPU memory. Large foundation models for weather (Aurora, Prithvi) or hybrid physics-ML models (NeuralGCM) can exceed even 80 GB A100s. In this case, shard the model across GPUs (FSDP, Tensor Parallelism, Pipeline Parallelism) and/or use memory-efficient techniques like gradient checkpointing.
 
 
 ## Other Weather/Climate Specific Considerations

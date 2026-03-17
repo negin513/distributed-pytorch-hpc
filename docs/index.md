@@ -8,7 +8,7 @@ This repository contains example workflows for executing multi-node, multi-GPU m
 
 While this code is written to run directly on [Derecho](https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/) GPU nodes, it can be adapted for other GPU HPC machines.
 
-The docs in here are meant to be a quick start guide for users who want to learn more about distributed training paradigms. 
+The docs in this repository are meant to be a quick start guide for users who want to learn more about distributed training paradigms. 
 
 <!--
 <p align="center">
@@ -17,6 +17,8 @@ The docs in here are meant to be a quick start guide for users who want to learn
 -->
 
 ## Quick Start on Derecho
+
+If you want to skip the background and jump straight to running distributed PyTorch on Derecho, follow these steps:
 
 ```bash
 git clone https://github.com/NCAR/distributed-pytorch-hpc

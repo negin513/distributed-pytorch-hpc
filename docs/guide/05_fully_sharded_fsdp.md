@@ -19,35 +19,35 @@ During training, parameters temporarily transition between two states:
 
 Here is the high-level lifecycle of a parameter shard during training with 4 GPUs:
 
-1. At rest — each GPU holds 1/4 of params:
-   GPU 0: [shard 0]
-   GPU 1: [shard 1]
-   GPU 2: [shard 2]
-   GPU 3: [shard 3]
+1. At rest — each GPU holds 1/4 of params: 
+   GPU 0: [shard 0] 
+   GPU 1: [shard 1] 
+   GPU 2: [shard 2] 
+   GPU 3: [shard 3] 
 
-2. Before forward — all-gather to reconstruct full params:
-   GPU 0: [shard 0 | shard 1 | shard 2 | shard 3]  (temporary)
-   GPU 1: [shard 0 | shard 1 | shard 2 | shard 3]  (temporary)
-   GPU 2: [shard 0 | shard 1 | shard 2 | shard 3]  (temporary)
-   GPU 3: [shard 0 | shard 1 | shard 2 | shard 3]  (temporary)
+2. Before forward — all-gather to reconstruct full params:   
+   GPU 0: [shard 0 | shard 1 | shard 2 | shard 3]  (temporary)  
+   GPU 1: [shard 0 | shard 1 | shard 2 | shard 3]  (temporary)  
+   GPU 2: [shard 0 | shard 1 | shard 2 | shard 3]  (temporary)  
+   GPU 3: [shard 0 | shard 1 | shard 2 | shard 3]  (temporary)  
 
-3. Compute forward pass (using full params)
+3. Compute forward pass (using full params) 
 
-4. After forward — discard non-local shards:
-   GPU 0: [shard 0]  (back to 1/4)
-   GPU 1: [shard 1]  (back to 1/4)
-   GPU 2: [shard 2]  (back to 1/4)
-   GPU 3: [shard 3]  (back to 1/4)
+4. After forward — discard non-local shards:    
+   GPU 0: [shard 0]  (back to 1/4)   
+   GPU 1: [shard 1]  (back to 1/4)  
+   GPU 2: [shard 2]  (back to 1/4)  
+   GPU 3: [shard 3]  (back to 1/4)   
 
-5. Before backward — all-gather again
+5. Before backward — all-gather again   
 
 6. After backward — reduce-scatter gradients:
-   GPU 0: [grad shard 0]  (already reduced + sharded)
-   GPU 1: [grad shard 1]  (already reduced + sharded)
-   GPU 2: [grad shard 2]  (already reduced + sharded)
-   GPU 3: [grad shard 3]  (already reduced + sharded)
+   GPU 0: [grad shard 0]  (already reduced + sharded)  
+   GPU 1: [grad shard 1]  (already reduced + sharded)   
+   GPU 2: [grad shard 2]  (already reduced + sharded)   
+   GPU 3: [grad shard 3]  (already reduced + sharded)   
 
-7. Optimizer step — each GPU updates only its shard
+7. Optimizer step — each GPU updates only its shard  
 
 In pseudo-code:
 ```
@@ -66,13 +66,12 @@ FSDP backward pass:
 ```
 Instead of DDP's all-reduce, FSDP uses all-gather and reduce-scatter to shard parameters and gradients. This allows you to train much larger models that don't fit in memory, at the cost of more communication overhead compared to DDP.
 
-[all-reduce](https://engineering.fb.com/wp-content/uploads/2021/07/FSDP-graph-2a.png)
-
+![all-reduce](https://engineering.fb.com/wp-content/uploads/2021/07/FSDP-graph-2a.png)
+Image from Facebook
 
 ## From DDP to FSDP
 
-Migrating from DDP to FSDP usually requires minimal code changes. Replace `DDP(model)` with `FSDP(model)` and
-add a wrapping policy:
+Migrating from DDP to FSDP usually requires minimal code changes. Replace `DDP(model)` with `FSDP(model)` and add a wrapping policy:
 
 ```python
 # DDP version:

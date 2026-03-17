@@ -9,8 +9,8 @@ Here's a minimal but complete training loop — a simple U-Net predicting weathe
 > **Note:** State-of-the-art weather models use specialized architectures better suited for global, spherical data:
 > - **GraphCast**: Graph Neural Networks on icosahedral mesh 
 > - **Pangu-Weather**: 3D Swin Transformers 
-> - **FourCastNet v1**: Adaptive Fourier Neural Operators (AFNO)
-> - **FourCastNet v2/3**: Spherical Fourier Neural Operators (SFNO)
+> - **FourCastNet v1**: Adaptive Fourier Neural Operators (AFNO) 
+> - **FourCastNet v2/3**: Spherical Fourier Neural Operators (SFNO) 
 > - **GenCast**: Diffusion models 
 > - **Aurora**: 3D Swin Transformer 
 >

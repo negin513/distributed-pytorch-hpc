@@ -26,6 +26,10 @@ Each process is identified by three numbers (assigned by the launcher):
 For example, with 2 nodes and 4 GPUs each, you have 8 processes with `WORLD_RANK`s 0-7. Each node has local `LOCAL_RANK`s 0-3. The `LOCAL_RANK` is used to assign a GPU to each process, while the `WORLD_RANK` is used for coordination (e.g., rank 0 handles logging and checkpointing). 
 `WORLD_SIZE` is the total number of processes (8 in this example) and is used for scaling learning rates and calculating effective batch sizes.
 
+
+
+![local_rank.png](https://miro.medium.com/v2/resize:fit:1380/format:webp/0*qH8bsMbEZ9ZMQuXm.png)
+
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │              WORLD RANK VS LOCAL RANK (2 nodes × 4 GPUs)            │

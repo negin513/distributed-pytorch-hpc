@@ -1,107 +1,39 @@
 # Chapter 6: Tensor Parallel (TP)
 
-Tensor Parallelism splits individual **weight matrices** across GPUs. While
-FSDP shards whole parameters and reconstructs them before use, TP keeps
+Tensor Parallelism (TP) is a model-parallel partitioning method that distributes the parameter tensor of an individual layer across GPUs. In addition to reducing model state memory usage, it also saves activation memory as the per-GPU tensor sizes shrink. However, the reduced per-GPU tensor size increases CPU overhead due to smaller per-GPU kernel workloads.
+
+While FSDP shards whole parameters and reconstructs them before use, TP keeps
 each GPU's shard in place and computes partial results that are combined
 with a collective operation.
 
-## When You Need TP
+![Tensor Parallelism Overview](../images/tp_overview.png)
+*Figure 1: Tensor Parallelism distributes individual layer parameters across multiple GPUs.*
 
-Consider a large transformer's feed-forward layer:
+## How It Works
 
-```
-FFN weight: [hidden_size × 4*hidden_size]
+TP partitions large weight matrices across GPUs. For a linear layer `Y = XW`, there are two fundamental approaches:
 
-For LLaMA-70B: [8192 × 32768] = 268M parameters = 1 GB in FP32
+### Column-Parallel Linear
 
-A single matmul on this weight requires the full matrix in GPU memory.
-FSDP would all-gather it before use — but what if even temporarily
-holding the full weight doesn't fit?
-```
+The weight matrix is split along columns across GPUs. Each GPU receives an identical copy of the input and performs matrix multiplication on its column shard. The partial outputs are then concatenated via an all-gather operation.
 
-TP solves this by never assembling the full matrix. Each GPU permanently
-holds a slice and computes a partial result.
+![Column-wise Parallel](../../docs/images/tp_colwise.jpeg)
+*Figure 2: Column-wise parallel splits the weight matrix W along columns. Each GPU computes a partial output, then results are gathered.*
 
-## Column-Parallel Linear
+### Row-Parallel Linear
 
-Split the weight matrix by **columns**. Each GPU has half the output
-features and computes its portion independently:
+The weight matrix is split along rows across GPUs. The input is divided along the inner dimension so each GPU has a corresponding shard. Each GPU computes a partial result, and outputs are combined via an all-reduce summation.
 
-```
-Full operation:  Y = XA    where A is [K × N]
+![Row-wise Parallel](../../docs/images/tp_rowwise.jpeg)
+*Figure 3: Row-wise parallel splits the weight matrix W along rows. Each GPU computes a partial sum, then results are reduced.*
 
-Split A into columns:  A = [A₁ | A₂]
+### Combined Column + Row Parallelism
 
-GPU 0:  Y₁ = X · A₁     (computes left half of output)
-GPU 1:  Y₂ = X · A₂     (computes right half of output)
+In practice, sequential linear layers (e.g., in an MLP block) use both methods together. The column-wise output feeds directly into the row-wise layer **without any data transfer between GPUs**. Element-wise operations like activation functions also apply without communication overhead. This is the key insight from the [Megatron-LM paper](https://arxiv.org/abs/1909.08053).
 
-Result: Y = [Y₁ | Y₂]   (concatenate)
-```
+![Combined Column and Row Parallel](../../docs/images/tp_combined.jpeg)
+*Figure 4: Combined approach pairs column-wise and row-wise parallelism to minimize communication to a single all-reduce per block.*
 
-```
-         X (input)                 A (weights)
-     ┌──────────┐          ┌──────────┬──────────┐
-     │          │    ×     │    A₁    │    A₂    │
-     │  [B × K] │          │  [K×N/2] │  [K×N/2] │
-     └──────────┘          └──────────┴──────────┘
-                                GPU 0      GPU 1
-                                  │          │
-                                  ▼          ▼
-                              Y₁=[B×N/2]  Y₂=[B×N/2]
-```
-
-No communication needed for the forward pass — each GPU has all of X.
-
-## Row-Parallel Linear
-
-Split the weight matrix by **rows**. Each GPU has half the input features
-and computes a partial sum:
-
-```
-Full operation:  Y = XA    where A is [K × N]
-
-Split A into rows:  A = [A₁]    Split X into columns:  X = [X₁ | X₂]
-                    [A₂]
-
-GPU 0:  Y₀ = X₁ · A₁     (partial result)
-GPU 1:  Y₁ = X₂ · A₂     (partial result)
-
-Result: Y = Y₀ + Y₁       (all-reduce to sum)
-```
-
-Row-parallel **requires an all-reduce** to combine partial sums.
-
-## The Column → Row Pattern
-
-The power of TP comes from chaining column-parallel and row-parallel
-layers. In a transformer FFN:
-
-```
-FFN:  Y = dropout(GeLU(X · W₁) · W₂)
-
-With TP:
-  W₁ = column-parallel  →  each GPU gets half of GeLU output
-  W₂ = row-parallel     →  all-reduce combines partial sums
-
-         X
-         │
-    ┌────┴────┐
-    ▼         ▼
-  X·W₁ᵃ    X·W₁ᵇ      ← column-parallel (no comm)
-    │         │
-  GeLU      GeLU
-    │         │
-  ·W₂ᵃ     ·W₂ᵇ       ← row-parallel
-    │         │
-    └────┬────┘
-     all-reduce          ← one communication per FFN
-         │
-         Y
-```
-
-The column-parallel output naturally feeds the row-parallel input, so
-**communication cancels out** — you only need one all-reduce per FFN
-block instead of two.
 
 ## PyTorch TP API
 

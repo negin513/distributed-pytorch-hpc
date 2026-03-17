@@ -6,6 +6,8 @@ a) the model is too large,
 b) training is too slow, or   
 c) the input data doesn't fit. 
 
+We also learned [what goes on GPU memory (VRAM) during training](01_single_gpu_baseline.md#what-goes-on-gpu-memory-vram-in-training) in terms of model parameters, activations, gradients, and optimizer state, and why we need to scale out to multiple GPUs to break through these walls.
+
 Distributed training strategies are techniques to break through these walls by splitting the work across multiple GPUs. Each strategy has different tradeoffs in terms of what it splits (data, model, or both), how it communicates between GPUs, and how much memory it saves.
 
 
@@ -17,6 +19,7 @@ There are technically two main paradigms for distributed training: **data parall
 
 
 ![Data vs Model Parallelism](images/data-vs-model-parallelism.png)
+Image from AnyScale
 
 Data parallelism is when we divide our training data across our available workers and run a copy of the model on each worker. Each worker then runs a different fragment of the data on the same model. 
 

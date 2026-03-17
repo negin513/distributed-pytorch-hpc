@@ -6,15 +6,23 @@ If your model does not fit on a single GPU, you can use FSDP and request more GP
 
 For a complete overview with examples, see the [PyTorch FSDP Tutorial](https://pytorch.org/tutorials/intermediate/fsdp_tutorial.html).
 
-![FSDP Architecture](https://miro.medium.com/v2/resize:fit:720/format:webp/1*WXLdGH09JN_RrtcvApQJEw.png)
+!!! tip "Highly recommended read: FSDP explained visually"
+    If you want a really intuitive, visual explanation of FSDP, check out [FSDP Explained Blog post from Clika](https://www.clika.io/blog-posts/fsdp-1). It explains how parameters transition between sharded and unsharded states, and how all-gather and reduce-scatter work together in practice. 
+    It's one of the best breakdowns of FSDP I've seen.
+
+
+<figure markdown="span">
+    ![FSDP Architecture](https://miro.medium.com/v2/resize:fit:720/format:webp/1*WXLdGH09JN_RrtcvApQJEw.png)
+    <figcaption>FSDP architecture: each GPU holds a shard of the model parameters, and all-gather reconstructs full parameters for computation. (Source: <a href="https://medium.com/@yashdoza21/scaling-model-training-across-multiple-gpus-efficient-strategies-with-pytorch-ddp-and-fsdp-d744be462667">Yash Doza, Medium</a>)</figcaption>
+</figure>
 
 
 ## How FSDP Works
 
 FSDP shards model parameters across GPUs so that each GPU stores only 1/N of the model, where N is the number of GPUs.
 
-During training, parameters temporarily transition between two states:    
-1. **Sharded state** – parameters are split across GPUs
+>  During training, parameters temporarily transition between two states:     
+1. **Sharded state** , where parameters are split across GPUs  
 2. **Unsharded state** – full parameters are reconstructed for computation  
 
 Here is the high-level lifecycle of a parameter shard during training with 4 GPUs:
@@ -69,8 +77,11 @@ FSDP backward pass:
 ```
 Instead of DDP's all-reduce, FSDP uses all-gather and reduce-scatter to shard parameters and gradients. This allows you to train much larger models that don't fit in memory, at the cost of more communication overhead compared to DDP.
 
-![all-reduce](https://engineering.fb.com/wp-content/uploads/2021/07/FSDP-graph-2a.png)
-Image from Facebook
+
+<figure markdown="span">
+    ![FSDP All-Gather and Reduce-Scatter](https://engineering.fb.com/wp-content/uploads/2021/07/FSDP-graph-2a.png)
+    <figcaption>Figure 5: FSDP uses all-gather to materialize parameters for computation and reduce-scatter to return gradients to sharded form. (Source: PyTorch/FSDP documentation and Meta FSDP materials)</figcaption>
+</figure>
 
 ## From DDP to FSDP
 
@@ -176,7 +187,7 @@ sharding benefit; too fine and communication overhead dominates.
 ## The Checkpointing Caveat
 Because each GPU only holds a fraction of the weights, you cannot simply call `torch.save(model.state_dict(), "model.pt")`. In that case, you will only save 1/N of the model!
 
-You must tell FSDP to gather the model before saving:
+So, you must tell FSDP to gather the model before saving:
 
 ```
 from torch.distributed.fsdp import FullStateDictConfig
@@ -211,6 +222,32 @@ qsub scripts/02_fully_sharded_fsdp/run_fsdp.sh
 **See also:**
 - [`scripts/02_fully_sharded_fsdp/resnet_fsdp_training.py`](../../scripts/02_fully_sharded_fsdp/resnet_fsdp_training.py) — FSDP training with ResNet-18 on CIFAR-10  
 - [`scripts/02_fully_sharded_fsdp/README.md`](../../scripts/02_fully_sharded_fsdp/README.md) — deep dive on FSDP
+
+??? info "FSDP vs FSDP2 (and why it matters for what’s next)"
+
+    *Under development*
+
+    You may see references to **FSDP2** in newer PyTorch materials.  
+    FSDP2 is the next-generation version of FSDP built on top of PyTorch’s  
+    **distributed tensor (`DTensor`) APIs**, enabling more flexible and composable parallelism.
+
+    - 📖 [PyTorch FSDP Tutorial](https://pytorch.org/tutorials/intermediate/fsdp_tutorial.html)  
+    - 📖 [DTensor / Distributed Tensor Docs](https://pytorch.org/docs/stable/distributed.tensor.html)
+
+    *Why this matters:*  
+    As models scale, we often combine multiple parallelism strategies:
+
+    - FSDP → shard model states (memory)  
+    - Tensor Parallel → shard computation (within layers)  
+    - Pipeline Parallel → shard model depth  
+
+    FSDP2 is designed to make these combinations cleaner and more natural.
+
+    In the next chapter, we introduce **Tensor Parallelism**, which splits computation within layers—something FSDP alone cannot do.
+
+    🔗 Good resource:  
+    [FSDP1 vs FSDP2 (Hugging Face Accelerate)](https://huggingface.co/docs/accelerate/concept_guides/fsdp1_vs_fsdp2)
+
 
 ## What's Next?
 

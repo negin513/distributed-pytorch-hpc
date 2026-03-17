@@ -107,16 +107,14 @@ dist.destroy_process_group()
 ```
 
 ## Effective Batch Size
-With DDP, each GPU processes `batch_size` samples per step. The effective
-batch size is:
+With DDP, each GPU processes `batch_size` samples per step. The effective batch size is:
 
 ```
 effective_batch_size = per_gpu_batch_size × world_size
 ```
 
-If you use `batch_size=64` on 4 GPUs, your effective batch size is 256.
-This matters for learning rate scheduling — you may need to scale the
-learning rate accordingly (linear scaling rule: `lr × world_size`).
+If you use `batch_size=64` on 1 GPU,  then on 4 GPUs, your effective batch size is 256.
+This matters for learning rate scheduling — you may need to scale the learning rate accordingly (linear scaling rule: `lr × world_size`).
 
 ## Common Pitfalls
 
@@ -133,7 +131,8 @@ if dist.get_rank() == 0:
     print(f"Loss: {loss.item()}")
 ```
 
-### Forgetting set_epoch()
+### Forgetting `set_epoch()`
+The `DistributedSampler` shuffles data differently each epoch based on the epoch number. If you forget to call `set_epoch()`, every epoch will have the same shuffle order, which can hurt convergence:
 
 ```python
 # Bad: same data order every epoch
@@ -148,30 +147,87 @@ for epoch in range(num_epochs):
         ...
 ```
 
-### Saving checkpoints on all ranks
+### Saving checkpoints from all ranks
 
-Only save on rank 0. All ranks have identical weights, so saving on every
-GPU wastes storage and can cause file corruption:
+If every process saves a checkpoint, you will end up with duplicated files and potential corruption.
 
 ```python
+# Bad: every rank writes a checkpoint
+torch.save(model.state_dict(), "checkpoint.pt")
+
+# Good: only rank 0 writes
 if dist.get_rank() == 0:
-    torch.save(model.module.state_dict(), "checkpoint.pt")
+    torch.save(model.state_dict(), "checkpoint.pt")
 ```
 
-Note: access `model.module` to get the unwrapped model state dict.
+!!! tip "Saving full model with DDP"
+    The above example only saves the local state dict on each GPU, which is not the full model. To save the full model, you can use `model.module.state_dict()` to access the underlying model's state dict.
 
+### Manually sending tensors between GPUs
+
+Not using `pin_memory` and `non_blocking=True` in your DataLoader can lead to slow data transfers between CPU and GPU. Always use these options for optimal performance.
+
+```
+train_loader = DataLoader(
+    train_dataset,
+    batch_size=batch_size,
+    shuffle=True,
+    pin_memory=True,
+)
+
+for data, target in train_loader:
+    data = data.to(device, non_blocking=True)
+    target = target.to(device, non_blocking=True)
+
+```
+
+### Uneven batch sizes across GPUs
+
+If the dataset size is not divisible by `WORLD_SIZE`, some ranks may receive fewer samples. This can lead to:
+
+- Imbalanced workloads across GPUs  
+- Incorrect gradient averaging  
+- Potential hangs or errors in synchronization  
+
+!!! note
+    `DistributedSampler` handles this by default by either:
+    - **Padding samples** (default behavior) so that each rank has the same number of samples  
+    - **Dropping extra samples** when `drop_last=True`  
+
+    This ensures that all ranks process the same number of batches and stay in sync.
+
+
+!!! info 
+[PyTorch DataLoader documenation](https://docs.pytorch.org/docs/stable/data.html#single-and-multi-process-data-loading) has more details on all knobs and options for `DistributedSampler` and how it handles shuffling, padding, and dropping samples.
+
+
+???+ tip "DDP Best Practices"
+    Here are some easy tips to get the best performance out of DDP:
+
+    - **Use mixed precision (FP16/BF16)** → faster + lower memory 
+    - **Keep GPUs busy** → check utilization (`nvitop` or `nvidia-smi`) before scaling  
+    - **Tune DataLoader**
+        - `num_workers ≈ num_gpus × 4`  
+        - `pin_memory=True`, `persistent_workers=True`  
+    - **Use `DistributedSampler` correctly**
+        - `shuffle=False` in DataLoader  
+        - call `sampler.set_epoch(epoch)`  
+    - **Scale batch size with GPUs** → adjust learning rate if needed  
+    - **Use NCCL + good network config** for fast communication  
+    - **Log/checkpoint only on rank 0** to avoid duplication and corruption
 
 ## When to Use DDP
 
-**Use DDP when:**
-- Your model fits on a single GPU
-- You want to train faster by using more GPUs
-- You want near-linear scaling with GPU count
+**Use DDP when:**  
+- Your model fits on a single GPU with `batch_size > 1` but training is too slow.  
+- You want to train faster by using more GPUs   
+- You want near-linear scaling with GPU count    
 
-**Move beyond DDP when:**
-- Your model doesn't fit on a single GPU → Chapter 5 (FSDP)
-- Individual layers are too large → Chapter 6 (TP)
-- You have hundreds of layers → Chapter 7 (PP)
+**Move beyond DDP when:**   
+- Your model doesn't fit on a single GPU → Chapter 5 (FSDP)   
+- Individual layers are too large → Chapter 6 (TP)   
+- You have hundreds of layers → Chapter 7 (PP)   
+- Your input data is too large, even for `batch_size=`→ Chapter 10 (Domain Parallelism)     
 
 ## Running the Examples
 
@@ -192,19 +248,20 @@ torchrun --standalone --nproc_per_node=4 \
 qsub scripts/01_data_parallel_ddp/torchrun_multigpu_ddp.sh
 ```
 
-**See also:**
-- [`scripts/01_data_parallel_ddp/README.md`](../../scripts/01_data_parallel_ddp/README.md) — full DDP guide with files, PBS instructions, and troubleshooting
-- [`scripts/01_data_parallel_ddp/multinode_ddp_basic.py`](../../scripts/01_data_parallel_ddp/multinode_ddp_basic.py) — minimal DDP example with synthetic data
-- [`scripts/01_data_parallel_ddp/distributed_dataloader.py`](../../scripts/01_data_parallel_ddp/distributed_dataloader.py) — DistributedSampler patterns
+**See also:**  
+- [`scripts/01_data_parallel_ddp/README.md`](../../scripts/01_data_parallel_ddp/README.md) — full DDP guide with files, PBS instructions, and troubleshooting    
+- [`scripts/01_data_parallel_ddp/multinode_ddp_basic.py`](../../scripts/01_data_parallel_ddp/multinode_ddp_basic.py) — minimal DDP example with synthetic data 
+- [`scripts/01_data_parallel_ddp/distributed_dataloader.py`](../../scripts/01_data_parallel_ddp/distributed_dataloader.py) — DistributedSampler patterns    
 
 ## References
 
 - [PyTorch DDP Tutorial](https://pytorch.org/tutorials/intermediate/ddp_tutorial.html)
 - [PyTorch Distributed Overview](https://pytorch.org/tutorials/beginner/dist_overview.html)
+- [Getting Started with PyTorch Distributed](https://medium.com/red-buffer/getting-started-with-pytorch-distributed-54ae933bb9f0)
+
 
 ## What's Next?
 
-DDP requires every GPU to hold the full model. When that's no longer
-possible, FSDP shards the model itself across GPUs.
+DDP requires every GPU to hold the full model. When that's no longer possible, FSDP shards the model itself across GPUs.
 
 **Next:** [Chapter 5 — Fully Sharded Data Parallel (FSDP)](05_fully_sharded_fsdp.md)

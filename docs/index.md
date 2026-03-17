@@ -1,7 +1,6 @@
 # Multi-Node PyTorch Distributed Training on NCAR's Derecho
-
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://github.com/NCAR/distributed-pytorch-hpc/blob/main/LICENSE)
 [![Derecho](https://img.shields.io/badge/HPC-Derecho-green)](https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/)
+[![Last Updated](https://img.shields.io/badge/Last_Updated-March_2026-blue)](https://github.com/NCAR/distributed-pytorch-hpc)
 
 This repository contains example workflows for executing multi-node, multi-GPU machine learning training using PyTorch on NCAR's HPC Supercomputers (i.e. Derecho), along with example PBS scripts for running them.
 

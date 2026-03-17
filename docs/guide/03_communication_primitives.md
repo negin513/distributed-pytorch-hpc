@@ -27,7 +27,7 @@ For example, with 2 nodes and 2 GPUs each, you have 4 processes with `WORLD_RANK
 
 <figure markdown="span">
   ![World Rank vs Local Rank](https://miro.medium.com/v2/resize:fit:1380/format:webp/0*qH8bsMbEZ9ZMQuXm.png)
-  <figcaption>Figure 1: World Rank vs Local Rank across two nodes with 4 GPUs each. (Source: Medium)</figcaption>
+  <figcaption>Figure 1: World Rank vs Local Rank across two nodes with 4 GPUs each. (Source: [Medium](https://medium.com/red-buffer/getting-started-with-pytorch-distributed-54ae933bb9f0))</figcaption>
 </figure>
 
 * You need to use `LOCAL_RANK` to assign a GPU: `torch.cuda.set_device(LOCAL_RANK)`.

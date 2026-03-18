@@ -1,7 +1,6 @@
 # Chapter 7: Pipeline Parallel (PP)
 
-Pipeline Parallelism splits a model **by depth (or model layers)**  different GPUs own
-different layers. GPU 0 runs layers 1-20, GPU 1 runs layers 21-40, and
+Pipeline Parallelism splits a model **by depth (or model layers)**; so different GPUs own different layers. GPU 0 runs layers 1-20, GPU 1 runs layers 21-40, and
 so on. 
 
 This is ideal for very deep models that don't fit on one GPU, but it can be used for any model with many layers.

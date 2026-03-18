@@ -1,20 +1,24 @@
 # Chapter 6: Tensor Parallel (TP)
 
-Tensor Parallelism (TP) is a model-parallel partitioning method that distributes the parameter tensor of an individual layer across GPUs. In addition to reducing model state memory usage, it also saves activation memory as the per-GPU tensor sizes shrink. However, the reduced per-GPU tensor size increases CPU overhead due to smaller per-GPU kernel workloads.
+Tensor Parallelism (TP) is a model-parallel partitioning method that distributes the parameter tensor of an individual layer of a model across GPUs. For example, a large weight matrix in a transformer block can be split across 4 GPUs, with each GPU responsible for computing a portion of the output. This allows you to train models with layers that are too large to fit on a single GPU, even if the overall model size is manageable.
 
-While FSDP shards whole parameters and reconstructs them before use, TP keeps
-each GPU's shard in place and computes partial results that are combined
-with a collective operation.
 
 <figure markdown="span">
   ![Modes of Parallelism](../images/modes_of_parallelism_diagram.png)
   <figcaption>Figure 1: Overview of parallelism modes — Data, Tensor, and Pipeline Parallelism. Tensor Parallelism splits individual layers across GPUs. (Source: robotchinwag.com)</figcaption>
 </figure>
 
+While FSDP shards whole parameters and reconstructs them before use, TP keeps
+each GPU's shard in place and computes partial results that are combined with a collective operation (i.e. all-reduce for row-parallel, all-gather for column-parallel). 
+
+??? warning "Tradeoff: smaller tensors vs GPU efficiency"
+
+    Splitting tensors across GPUs reduces both model state memory and activation memory, since each GPU works on smaller chunks of data.
+    However, smaller per-GPU tensor sizes can lead to lower GPU utilization and increased CPU overhead due to more frequent communication and smaller kernel workloads. This is a key tradeoff in TP, i.e.  you can fit larger layers, but you may not get linear speedup with GPU count.
+
 
 ## How It Works
-
-TP partitions large weight matrices across GPUs. For a linear layer `Y = X x W`, there are two fundamental approaches:
+The key to TP is that matrix multiplication can be executed in parallel by splitting the weight matrix across GPUs. TP partitions large weight matrices across GPUs. For a linear layer `Y = X x W`, there are three fundamental approaches:
 
 ### Column-Parallel Linear
 
@@ -74,8 +78,7 @@ model = parallelize_module(
 
 ## TP Degree on Derecho
 
-TP requires frequent `all-reduce`s between GPUs. 
-The **TP degree** is the number of GPUs that collectively hold one layer's weights. On Derecho, each node has 4 A100 40GB GPUs connected via NVLink (600 GB/s bidirectional). This makes the node boundary the natural limit for TP.
+TP requires frequent `all-reduce`s or `all-gather`s between GPUs. The **TP degree** is the number of GPUs that collectively hold one layer's weights. On Derecho, each node has 4 A100 40GB GPUs connected via NVLink (600 GB/s bidirectional). This makes the node boundary the natural limit for TP.
  
 | TP Degree | Interconnect | All-reduce Cost | Recommendation |
 |:---:|:---:|:---:|:---:|
@@ -101,11 +104,9 @@ Chapter 9 (Hybrid Parallelism) covers how to combine TP with FSDP for large mode
 
 ## 1D vs 2D Tensor Parallelism
 
-**1D TP** splits weight matrices along one dimension (columns or rows),
-as shown above. We learned about this in the above section. 
+**1D TP** splits weight matrices along one dimension (columns or rows), as shown above. We learned about this in the above section. 
 
-**2D TP** splits along both dimensions using a 2D GPU grid. This reduces
-communication volume but requires more GPUs. 
+**2D TP** splits along both dimensions using a 2D GPU grid. This reduces communication volume but requires more GPUs. 
 
 With 4 GPUs in a 2×2 grid:
 
@@ -124,8 +125,19 @@ Weight matrix A [K × N]:
 
 ```
 
-2D TP reduces the per-GPU communication from O(N) to O(√N) but adds
-complexity in process-group management, data layout, synchronization, and implementation overhead. In practice, this means better scalability at large GPU counts, but a more complicated setup than 1D TP. See the scripts for a working example.. See the scripts for a working example.
+2D TP reduces the per-GPU communication from O(N) to O(√N) but adds complexity in process-group management, data layout, synchronization, and implementation overhead. In practice, this means better scalability at large GPU counts, but a more complicated setup than 1D TP. See the scripts for a working example.. See the scripts for a working example.
+
+## When to Use Tensor Parallelism
+
+You should use TP when:
+
+- A **single layer is too large** to fit on one GPU  
+- FSDP still fails due to **temporary all-gather OOMs**  
+- You are training **large Transformer-style models**  
+
+!!! warning "Communication-heavy strategy"
+    TP introduces synchronization inside every layer, making it much more sensitive to network performance
+    than DDP or FSDP. Avoid  TP if your GPUs are not connected via high-speed interconnect (e.g., NVLink).
 
 ## Running the Examples
 

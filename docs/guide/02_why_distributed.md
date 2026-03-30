@@ -89,35 +89,6 @@ TP within a node (fast local communication) + FSDP across nodes
 (parameter sharding over the network). This is how large language models
 are trained in practice.
 
-## How They Relate
-```
-
-                              Single GPU Training
-                                       │
-                 ┌─────────────────────┴─────────────────────┐
-                 ▼                                           ▼
-        Wall 1: Fits in memory,                 Doesn't fit in memory
-             but too slow?                                   │
-                 │                                           │
-                 ▼                                           ▼
-        Data Parallelism (DDP)                      What is too large?
-         (Replicate Model,                                   │
-           Split Batch)                ┌─────────────────────┴─────────────────────┐
-                 │                     ▼                                           ▼
-                 │             Wall 3: Model Weights                  Wall 2: Spatial/Input
-                 │              & Optimizer State                   Dimensions (Activations)
-                 │                     │                                           │
-                 │         ┌───────────┼───────────┐                   ┌───────────┴───────────┐
-                 │         ▼           ▼           ▼                   ▼                       ▼
-                 │       FSDP          TP          PP           Domain Parallel       Sequence Parallel
-                 │   (Shard All)  (Split Wts) (Split Depth)     (Halo Exchange)         (Ulysses/Ring)
-                 │         │           │           │                   │                       │
-                 └─────────┴───────────┴───────────┴───────────────────┴───────────────────────┘
-                                                   │
-                                                   ▼
-                                          Hybrid Parallelism
-                           (e.g., FSDP + TP + Sequence Parallel simultaneously)
-```
 
 ## What's Next?
 

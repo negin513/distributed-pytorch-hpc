@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "distributed-pytorch-hpc"
+version = "0.1.0"
+description = "Distributed PyTorch training examples for NCAR's Derecho"
+readme = "README.md"
+license = {text = "GPL-3.0"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Negin Sobhani", email = "negins@ucar.edu"},
+]
+dependencies = [
+    "torch>=2.3",
+    "torchvision>=0.18",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+mpi = ["mpi4py"]
+
+[tool.setuptools.packages.find]
+include = ["utils*"]

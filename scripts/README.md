@@ -1,21 +1,26 @@
-This directory includes some example scripts for running PyTorch training on multiple GPUs across multiple nodes using `torchrun`.
+# Scripts — Distributed Training Examples
 
-Important scripts:
-```
-scripts/
-├── torchrun_multigpu_pbs.sh # Performance Test for Multi-GPU ResNet Training on Derecho using DDP
-|-- main.py # Main script for training ResNet model (downloads data automatically) includes timing and stats for performance testing
-|-- multigpu_resnet.py # ResNet model (simple test no timing)
-```
+Each subdirectory demonstrates a different parallelism strategy with working
+code and a PBS job script for Derecho.
 
+| Dir | Strategy | Description | PBS Script |
+|-----|----------|-------------|------------|
+| `01_data_parallel_ddp/` | DDP | Gradient all-reduce across replicated models | `torchrun_multigpu_ddp.sh` |
+| `02_fully_sharded_fsdp/` | FSDP | Shard params, grads, optimizer across GPUs | `run_fsdp.sh` |
+| `03_tensor_parallel_tp/` | TP | Split weight matrices across GPUs | `run_tensor_parallel.sh` |
+| `04_pipeline_parallel_pp/` | PP | Split model layers across GPUs (GPipe, 1F1B) | `run_pipeline_parallel.sh` |
+| `05_sequence_parallel_sp/` | SP | Split sequence dimension for LayerNorm/Dropout | `run_sequence_parallel.sh` |
+| `06_hybrid_parallelism/` | TP + FSDP | TP within nodes, FSDP across nodes | `run_hybrid.sh` |
+| `07_domain_parallel_shardtensor/` | Domain | Split spatial dimensions (halo exchange) | `run_domain_parallel.sh` |
 
-Running `torchrun_multigpu_pbs.sh` will submit a job that trains a ResNet model on multiple GPUs across multiple nodes using PyTorch's Distributed Data Parallel (DDP) library with and without NCCL OFI plugin. 
+## Quick Start
 
-This will give you timing results for the training jobs in `reresnet_benchmark.log` 
+```bash
+# Submit any example via PBS
+qsub scripts/01_data_parallel_ddp/torchrun_multigpu_ddp.sh
 
-Preliminary results show that the NCCL OFI plugin can provide a significant speedup for multi-GPU training on Derecho.
-
-```
-w/o OFI plugin : nccl 2-19-3: Average epoch time: 4.805356439917978 sec.
-w OFI plugin     nccl 2-19-3: Average epoch time: 2.795084637824935 sec.
+# Or run interactively on a GPU node
+cd scripts/01_data_parallel_ddp
+mpiexec -n 4 --ppn 4 --cpu-bind none python multinode_ddp_basic.py
+torchrun --standalone --nproc_per_node=4 multinode_ddp_basic.py
 ```

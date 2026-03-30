@@ -4,7 +4,7 @@ Pipeline Parallelism splits a model **by depth (or model layers)**; so different
 so on. 
 
 This is ideal for very deep models that don't fit on one GPU, but it can be used for any model with many layers.
-![Pipeline Parallelism illustration](images/pipe_fairscale.png)
+![Pipeline Parallelism illustration](../images/pipe_fairscale.png)
 
 
 Note that pipeline parallelism can increase the total latency for each request because of communication between different pipeline stages.
@@ -32,7 +32,7 @@ activations for all micro-batches simultaneously (high memory), and has a large 
 
 The illustration below shows the forward and backward passes for 4 stages and 4 micro-batches. The forward pass processes all micro-batches sequentially, followed by the backward pass, which also processes all micro-batches sequentially. This results in a bubble fraction of 75%, meaning that 75% of the time, some GPUs are idle.
 
-![GPipe](images/gpipe.png)
+![GPipe](../images/gpipe.png)
 
 
 ### 1F1B (One Forward, One Backward)
@@ -40,7 +40,7 @@ The illustration below shows the forward and backward passes for 4 stages and 4 
 
 The image below illustrates the 1F1B schedule for 4 stages and 4 micro-batches in PipeDream. In this schedule, as soon as the first micro-batch completes its forward pass on GPU 0, it immediately starts its backward pass while GPU 0 begins processing the second micro-batch. This interleaving continues, allowing for a much smaller bubble fraction of 12.5%, meaning that only 12.5% of the time, some GPUs are idle.
 
-![1F1B](images/1F1B.png)
+![1F1B](../images/1F1B.png)
 
 1F1B is preferred in practice because it uses less memory with the same
 bubble overhead.
@@ -56,7 +56,7 @@ Pipeline parallelism uses **point-to-point send/recv** between adjacent
 stages:
 
 <figure markdown="span">
-  ![Pipeline Parallelism - How Stages Communicate](images/pipeline-inference.png)
+  ![Pipeline Parallelism - How Stages Communicate](../images/pipeline-inference.png)
   <figcaption>Illustration of pipeline parallelism showing how stages communicate via point-to-point send/recv between adjacent GPUs. (Source: <a href="https://afmck.in/posts/2023-02-26-parallelism/">afmck.in</a>)</figcaption>
 </figure>
 

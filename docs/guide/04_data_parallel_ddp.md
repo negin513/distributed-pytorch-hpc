@@ -197,7 +197,9 @@ If the dataset size is not divisible by `WORLD_SIZE`, some ranks may receive few
     This ensures that all ranks process the same number of batches and stay in sync.
 
 
-!!! info 
+![Distributed Data Parallel](../images/data_parallel.png)
+
+!!! info
 [PyTorch DataLoader documenation](https://docs.pytorch.org/docs/stable/data.html#single-and-multi-process-data-loading) has more details on all knobs and options for `DistributedSampler` and how it handles shuffling, padding, and dropping samples.
 
 

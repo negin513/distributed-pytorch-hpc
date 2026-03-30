@@ -17,7 +17,7 @@ This chapter gives an overview of the distributed training strategies we'll cove
 There are technically two main paradigms for distributed training: **data parallelism** and **model parallelism**. 
 
 
-![Data vs Model Parallelism](images/data-vs-model-parallelism.png)
+![Data vs Model Parallelism](../images/data-vs-model-parallelism.png)
 Image from AnyScale
 
 Data parallelism is when we divide our training data across our available workers and run a copy of the model on each worker. Each worker then runs a different fragment of the data on the same model. 

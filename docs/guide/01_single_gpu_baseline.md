@@ -19,7 +19,7 @@ These datasets are ingested and preprocessed using libraries such as xarray, Das
 
 ??? note "Minimal single-GPU training example"
 
-    First, we start with a minimal but complete training loop — a simple U-Net predicting weather on ERA5-like data.
+    First, we start with a minimal but complete training loop — a U-Net predicting weather on ERA5-like data.
 
     !!! note
         We use a U-Net for familiarity, but production weather models typically use architectures such as:

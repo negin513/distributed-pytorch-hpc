@@ -32,7 +32,7 @@ Consider a domain with 1440×1440 grids and 100+ vertical levels. A single forwa
 Domain parallelism splits the grid into tiles, each processed by a different GPU. Each GPU only needs to store activations for its tile, reducing memory requirements by 1/N for N GPUs. 
 
 <figure markdown="span">
-  ![Domain decomposition of a geographic grid showing spatial tiles with halo exchange arrows between neighbors](images/domain_decomposition.png){ width="500" }
+  ![Domain decomposition of a geographic grid showing spatial tiles with halo exchange arrows between neighbors](../images/domain_decomposition.png){ width="500" }
   <figcaption>Domain decomposition of a geographic grid into spatial tiles. Red arrows show halo exchange between neighboring subdomains.</figcaption>
 </figure>
 

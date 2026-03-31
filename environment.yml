@@ -7,7 +7,7 @@ dependencies:
   - python=3.11
   - mpi4py =*=derecho*
   - pip
-  - pytorch ==2.8.0=derecho*2000
+  - pytorch ==2.8.0=derecho*
   - torchvision =*=derecho*
   - pyyaml
   - numpy

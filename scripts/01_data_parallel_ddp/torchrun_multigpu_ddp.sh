@@ -84,4 +84,6 @@ eval $CMD
 
 echo ""
 echo "--- DDP distributed dataloader ---"
-mpiexec -n $TOTAL_PROCS  --cpu-bind none python distributed_dataloader.py
+CMD="mpiexec -n $TOTAL_PROCS  --cpu-bind none python distributed_dataloader.py"
+echo "Running command: $CMD"
+eval $CMD

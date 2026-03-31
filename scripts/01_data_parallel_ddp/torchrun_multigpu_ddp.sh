@@ -72,13 +72,11 @@ export FI_MR_CACHE_MONITOR=userfaultfd
 export MPICH_GPU_MANAGED_MEMORY_SUPPORT_ENABLED=1
 export MPICH_OFI_NIC_POLICY=GPU
 export MPICH_GPU_SUPPORT_ENABLED=1
-
-
-export LSCRATCH=/glade/derecho/scratch/negins/
+export LSCRATCH=/glade/derecho/scratch/$USER/
 
 
 echo "--- DDP basic training ---"
-CMD="MASTER_ADDR=$head_node_ip MASTER_PORT=1234 mpiexec -n $TOTAL_PROCS --cpu-bind none python multinode_ddp_basic.py --total_epochs 10"
+CMD="mpiexec -n $TOTAL_PROCS --cpu-bind none python multinode_ddp_basic.py --total_epochs 10"
 echo "Running command: $CMD"
 eval $CMD
 

@@ -17,7 +17,7 @@ This chapter gives an overview of the distributed training strategies we'll cove
 There are technically two main paradigms for distributed training: **data parallelism** and **model parallelism**. 
 
 
-![Data vs Model Parallelism](images/data-vs-model-parallelism.png)
+![Data vs Model Parallelism](../images/data-vs-model-parallelism.png)
 Image from AnyScale
 
 Data parallelism is when we divide our training data across our available workers and run a copy of the model on each worker. Each worker then runs a different fragment of the data on the same model. 
@@ -89,35 +89,6 @@ TP within a node (fast local communication) + FSDP across nodes
 (parameter sharding over the network). This is how large language models
 are trained in practice.
 
-## How They Relate
-```
-
-                              Single GPU Training
-                                       │
-                 ┌─────────────────────┴─────────────────────┐
-                 ▼                                           ▼
-        Wall 1: Fits in memory,                 Doesn't fit in memory
-             but too slow?                                   │
-                 │                                           │
-                 ▼                                           ▼
-        Data Parallelism (DDP)                      What is too large?
-         (Replicate Model,                                   │
-           Split Batch)                ┌─────────────────────┴─────────────────────┐
-                 │                     ▼                                           ▼
-                 │             Wall 3: Model Weights                  Wall 2: Spatial/Input
-                 │              & Optimizer State                   Dimensions (Activations)
-                 │                     │                                           │
-                 │         ┌───────────┼───────────┐                   ┌───────────┴───────────┐
-                 │         ▼           ▼           ▼                   ▼                       ▼
-                 │       FSDP          TP          PP           Domain Parallel       Sequence Parallel
-                 │   (Shard All)  (Split Wts) (Split Depth)     (Halo Exchange)         (Ulysses/Ring)
-                 │         │           │           │                   │                       │
-                 └─────────┴───────────┴───────────┴───────────────────┴───────────────────────┘
-                                                   │
-                                                   ▼
-                                          Hybrid Parallelism
-                           (e.g., FSDP + TP + Sequence Parallel simultaneously)
-```
 
 ## What's Next?
 

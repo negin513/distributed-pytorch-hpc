@@ -16,6 +16,8 @@ DDP is PyTorch's recommended approach and easiest to implement for multi-GPU tra
 
 ![DDP Architecture](https://miro.medium.com/v2/resize:fit:720/format:webp/1*zbgdxY4VN_uola6kQWzlzw.png)
 *Figure 1: DDP replicates the full model on each GPU and averages gradients across GPUs after backward pass (Image from Medium)*
+
+
 ## How DDP Works?
 
 1. **Model Replication**: Each GPU gets a full copy of the model
@@ -23,7 +25,6 @@ DDP is PyTorch's recommended approach and easiest to implement for multi-GPU tra
 3. **Forward Pass**: Each GPU processes its batch independently
 4. **Gradient Sync**: During backward propagation, gradients are averaged across all GPUs using `all-reduce` operation (typically via NCCL backend for GPUs)
 5. **Parameter Update**: All GPUs update their parameters and after synchronization, each model replica remains identical.
-
 
 
 Each GPU computes gradients independently, then participates in an all-reduce operation to ensure all model replicas remain identical before the next optimization step.
@@ -107,14 +108,13 @@ dist.destroy_process_group()
 ```
 
 ## Effective Batch Size
-With DDP, each GPU processes `batch_size` samples per step. The effective batch size is:
+With DDP, each GPU processes `batch_size` samples per step. The effective batch size is calculated as:
 
 ```
 effective_batch_size = per_gpu_batch_size × world_size
 ```
 
-If you use `batch_size=64` on 1 GPU,  then on 4 GPUs, your effective batch size is 256.
-This matters for learning rate scheduling — you may need to scale the learning rate accordingly (linear scaling rule: `lr × world_size`).
+If you use `batch_size=64` on 1 GPU,  then on 4 GPUs, your effective batch size is 256. This matters for learning rate scheduling, you may need to scale the learning rate accordingly (linear scaling rule: `lr × world_size`).
 
 ## Common Pitfalls
 
@@ -132,6 +132,7 @@ if dist.get_rank() == 0:
 ```
 
 ### Forgetting `set_epoch()`
+
 The `DistributedSampler` shuffles data differently each epoch based on the epoch number. If you forget to call `set_epoch()`, every epoch will have the same shuffle order, which can hurt convergence:
 
 ```python
@@ -167,7 +168,7 @@ if dist.get_rank() == 0:
 
 Not using `pin_memory` and `non_blocking=True` in your DataLoader can lead to slow data transfers between CPU and GPU. Always use these options for optimal performance.
 
-```
+```python
 train_loader = DataLoader(
     train_dataset,
     batch_size=batch_size,
@@ -197,7 +198,9 @@ If the dataset size is not divisible by `WORLD_SIZE`, some ranks may receive few
     This ensures that all ranks process the same number of batches and stay in sync.
 
 
-!!! info 
+![Distributed Data Parallel](../images/data_parallel.png)
+
+!!! info
 [PyTorch DataLoader documenation](https://docs.pytorch.org/docs/stable/data.html#single-and-multi-process-data-loading) has more details on all knobs and options for `DistributedSampler` and how it handles shuffling, padding, and dropping samples.
 
 

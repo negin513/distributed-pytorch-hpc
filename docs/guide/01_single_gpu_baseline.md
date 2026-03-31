@@ -1,15 +1,15 @@
 # Chapter 1: Single-GPU Baseline
 
-Before we distribute anything, we need a solid single-GPU training script to serve as our starting point. Every distributed strategy in this guide is a modification of this baseline.
+Before we distribute anything, we need a solid single-GPU training script to serve as our starting point. 
 
-But first let's look at the typical AI/ML workflow in geosciences to understand where distributed training fits in.
+First let's look at the typical AI/ML workflow in geosciences to understand where distributed training concepts fits in.
 
 <figure markdown="span">
   ![Typical AI/ML Workflow in Geosciences](../images/typical_ai_ml_workflow_geosciences.png)
   <figcaption>Figure 1: Typical AI/ML workflow in Geosciences</figcaption>
 </figure>
 
-A typical AI/ML workflow in geosciences begins with large observational or reanalysis datasets stored in formats such as Zarr, NetCDF, COG, or HDF. These datasets are often multi-dimensional, spatiotemporal, and extremely large and may include variables such as temperature, wind fields, pressure, and precipitation across many vertical levels and time steps.
+A typical AI/ML workflow in geosciences begins with ingesting some n-dimensional dataset stored in formats such as Zarr, NetCDF, COG, or HDF-5. These datasets are often multi-dimensional, spatiotemporal, and extremely large and may include variables such as temperature, wind fields, pressure, and precipitation across many vertical levels and time steps.
 
 These datasets are ingested and preprocessed using libraries such as xarray, Dask, CuPy, and NumPy, and—if needed—regridded. The processed data is then fed into deep learning frameworks like PyTorch or TensorFlow, where models (e.g., CNNs, U-Nets, Transformers) are trained and validated on GPUs. Once trained, the model can be deployed for inference tasks such as weather forecasting, climate downscaling, or hazard prediction. In this guide, we focus on the **training stage** and how to scale it across multiple GPUs using different distributed training strategies.
 
@@ -19,7 +19,7 @@ These datasets are ingested and preprocessed using libraries such as xarray, Das
 
 ??? note "Minimal single-GPU training example"
 
-    First, we start with a minimal but complete training loop — a simple U-Net predicting weather on ERA5-like data.
+    First, we start with a minimal but complete training loop — a U-Net predicting weather on ERA5-like data.
 
     !!! note
         We use a U-Net for familiarity, but production weather models typically use architectures such as:
@@ -156,22 +156,26 @@ These datasets are ingested and preprocessed using libraries such as xarray, Das
 
 ---
 
-## What Goes on GPU Memory (VRAM) in Training?
-When training a deep learning model, the GPU memory (VRAM) acts as a high-speed workspace where several distinct components must coexist. If the total memory required by these components exceeds your VRAM capacity, you will encounter the **CUDA Out of Memory (OOM)** error.
 
-During training, several key components compete for GPU memory:
 
-- **Model parameters** (weights)   
-- **Gradients** (computed during backpropagation)  
-- **Optimizer states** (e.g., momentum and variance in Adam)  
-- **Activations** (intermediate outputs stored for backpropagation)  
+## What Goes on GPU Memory (VRAM) During Training?
+
+To understand why distributed training is necessary, we first need to understand how GPU memory is consumed during training. Think of GPU memory (VRAM) as a high-speed workspace where every component of the training process must coexist simultaneously. Unlike CPU memory, which can swap to disk, GPU memory is a finite, exclusive resource—once you exceed its capacity, training halts with the dreaded CUDA Out of Memory (OOM) error.
+
+During training, four key components compete for this limited resource:
+
+- Model parameters (weights) : the learnable weights that define your model  
+- Gradients : computed during backpropagation, one per parameter  
+- Optimizer states : additional values the optimizer tracks, such as momentum and variance in Adam (often 2× the parameter count)  
+- Activations : the intermediate outputs of each layer, stored to enable gradient computation during the backward pass   
+
 
 <figure markdown="span">
   ![GPU Memory Components](../images/gpu_memory_components.png)
   <figcaption>Figure 2: What lives in GPU memory during training</figcaption>
 </figure>
 
-The relative size of these components can vary significantly depending on the model architecture, numerical precision, and input data characteristics. But in many geoscientific AI models, **activations are the dominant memory consumer** due to the large spatial dimensions and deep architectures used to capture complex dynamics.
+The relative size of these components can vary significantly depending on the model architecture, numerical precision, and input data size. But in many geoscientific AI models, **activations are the dominant memory consumer** due to the large spatial dimensions and deep architectures used to capture complex dynamics.
 
 ----------
 

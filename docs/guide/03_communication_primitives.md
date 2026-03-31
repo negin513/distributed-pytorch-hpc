@@ -1,11 +1,8 @@
 # Chapter 3: Communication Primitives (Collective Operations)
 
-Every distributed strategy from [Chapter 2](02_why_distributed.md) boils down to a pattern of
-communication (collective operations) between GPUs. Once you understand these communication primitives, every distributed strategy is just a specific pattern of these operations.
+Every distributed strategy from [Chapter 2](02_why_distributed.md) boils down to a pattern of communication (collective operations) between GPUs. Once you understand these communication primitives, every distributed strategy is just a specific pattern of these operations.
 
-This chapter covers the building blocks of distributed training: 
-ranks, process groups, and the five collective operations you'll see
-throughout the guide.
+This chapter covers the building blocks of distributed training:  ranks, process groups, and the five collective operations you'll see throughout the guide.
 
 ## Processes and Ranks
 

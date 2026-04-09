@@ -20,10 +20,10 @@ The docs in this repository are meant to be a quick start guide for users who wa
 If you want to skip the background and jump straight to running distributed PyTorch on Derecho, follow these steps:
 
 ```bash
-git clone https://github.com/NCAR/distributed-pytorch-hpc
+git clone https://github.com/negin513/distributed-pytorch-hpc
 cd distributed-pytorch-hpc
-
-module load conda
+module reset
+module load conda mkl cuda
 conda env create -f environment.yml
 conda activate pytorch-derecho
 ```

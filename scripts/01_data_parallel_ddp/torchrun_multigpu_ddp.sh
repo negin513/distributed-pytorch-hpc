@@ -18,8 +18,9 @@
 
 # Load modules
 module reset 
-module load cuda conda 
-conda activate torch28-nccl221-clone
+module load cuda conda mkl
+conda activate pytorch-derecho
+#conda activate torch28-nccl221-clone
 
 #########################################
 # Determine the number of nodes:
@@ -77,11 +78,5 @@ export LSCRATCH=/glade/derecho/scratch/$USER/
 
 echo "--- DDP basic training ---"
 CMD="mpiexec -n $TOTAL_PROCS --cpu-bind none python multinode_ddp_basic.py --total_epochs 10"
-echo "Running command: $CMD"
-eval $CMD
-
-echo ""
-echo "--- DDP distributed dataloader ---"
-CMD="mpiexec -n $TOTAL_PROCS  --cpu-bind none python distributed_dataloader.py"
 echo "Running command: $CMD"
 eval $CMD

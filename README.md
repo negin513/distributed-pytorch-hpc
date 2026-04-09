@@ -73,10 +73,10 @@ See [`scripts/07_domain_parallelism/`](scripts/07_domain_parallelism/) for examp
 ### 1. Setup Environment
 
 ```bash
-git clone https://github.com/NCAR/distributed-pytorch-hpc
+git clone https://github.com/negin513/distributed-pytorch-hpc
 cd distributed-pytorch-hpc
 
-module load conda
+module load conda mkl cuda
 
 # create environment from custom torch wheel built for Derecho (with NCCL tuned for Slingshot)
 conda env create -f environment.yml
@@ -87,7 +87,7 @@ conda activate pytorch-derecho
 ``` bash
 # submit examples to train on Derecho using PBS scripts in `scripts/`
 cd scripts/01_data_parallel_ddp
-qsub run_ddp.sh -A <your_account>  # submit DDP job to PBS
+qsub -A <your_account> torchrun_multigpu_ddp.sh  # submit DDP job to PBS
 ```
 
 ## Launching Distributed Jobs

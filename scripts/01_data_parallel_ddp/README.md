@@ -94,17 +94,17 @@ Use `torchrun` for single-node multi-GPU training, or `mpiexec` or `mpirun` for 
 torchrun --nproc_per_node=4 resnet_ddp_training.py
 
 # Multi-node (2 nodes, 4 GPUs each)
-mpiexec -n 8 --ppn 4 --cpu-bind none python multinode_ddp_training.py
+mpiexec -n 8 --ppn 4 --cpu-bind none python multinode_ddp_unet.py
 ```
-
-## Files in this Directory
 
 ## Files in this Directory
 
 | File | Description |
 |------|-------------|
-| `multinode_ddp_training.py` | Example script for multi-node DDP training |
-| `torchrun_multigpu_ddp.sh` | PBS job script for running on Derecho |
+| `multinode_ddp_basic.py` | Minimal DDP template with a synthetic Linear-model dataset |
+| `multinode_ddp_unet.py` | Full DDP U-Net example on synthetic ERA5-like data |
+| `distributed_dataloader.py` | Focused `DistributedSampler` + `DataLoader` example |
+| `torchrun_multigpu_ddp.sh` | PBS job script for a single DDP run on Derecho |
 
 ### Running via PBS
 

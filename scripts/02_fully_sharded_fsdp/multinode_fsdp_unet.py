@@ -14,10 +14,14 @@ Usage:
     mpiexec -n 8 --ppn 4 --cpu-bind none python multinode_fsdp_unet.py
 """
 import os
+import sys
 import socket
 import argparse
 import functools
 import time
+
+# Add repo root to path so `from utils...` works
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 
 import torch
 import torch.nn as nn
@@ -25,121 +29,11 @@ import torch.optim as optim
 import torch.distributed as dist
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from torch.distributed import init_process_group, destroy_process_group
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp import ShardingStrategy, StateDictType, FullStateDictConfig
 from torch.distributed.fsdp.wrap import size_based_auto_wrap_policy
 
-
-# =============================================================================
-# Distributed Environment Setup
-# =============================================================================
-
-def detect_rank_info():
-    """
-    Detect LOCAL_RANK, WORLD_SIZE, WORLD_RANK from the active launcher.
-
-    Checks environment variables in priority order:
-        1. torchrun (LOCAL_RANK, RANK, WORLD_SIZE)
-        2. mpi4py   (preferred for mpiexec; broadcasts rank 0's host so
-                     every rank agrees on MASTER_ADDR — works for both
-                     OpenMPI and Cray MPICH)
-        3. OpenMPI env vars  (fallback if mpi4py is unavailable)
-        4. Cray MPICH PMI env vars (fallback if mpi4py is unavailable —
-                     single-node only, see warning below)
-        5. Single process
-
-    Returns:
-        tuple: (local_rank, world_size, world_rank, launcher_name)
-    """
-    # Method 1: torchrun / torch.distributed.launch
-    if "LOCAL_RANK" in os.environ and "RANK" in os.environ:
-        return (
-            int(os.environ["LOCAL_RANK"]),
-            int(os.environ["WORLD_SIZE"]),
-            int(os.environ["RANK"]),
-            "torchrun",
-        )
-
-    # Method 2: mpi4py — preferred for any mpiexec launch because it can
-    # broadcast rank 0's hostname so every rank agrees on MASTER_ADDR.
-    try:
-        from mpi4py import MPI
-        comm = MPI.COMM_WORLD
-        world_size = comm.Get_size()
-
-        if world_size > 1:
-            shmem_comm = comm.Split_type(MPI.COMM_TYPE_SHARED)
-            local_rank = shmem_comm.Get_rank()
-            world_rank = comm.Get_rank()
-
-            if "MASTER_ADDR" not in os.environ:
-                os.environ["MASTER_ADDR"] = comm.bcast(
-                    socket.gethostbyname(socket.gethostname()), root=0
-                )
-            if "MASTER_PORT" not in os.environ:
-                os.environ["MASTER_PORT"] = "1234"
-
-            return local_rank, world_size, world_rank, "mpi4py"
-    except ImportError:
-        pass
-
-    # Method 3: OpenMPI mpirun (env-var fallback, single-node safe)
-    if "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ:
-        if "MASTER_ADDR" not in os.environ:
-            os.environ["MASTER_ADDR"] = socket.gethostbyname(socket.gethostname())
-        if "MASTER_PORT" not in os.environ:
-            os.environ["MASTER_PORT"] = "1234"
-        return (
-            int(os.environ["OMPI_COMM_WORLD_LOCAL_RANK"]),
-            int(os.environ["OMPI_COMM_WORLD_SIZE"]),
-            int(os.environ["OMPI_COMM_WORLD_RANK"]),
-            "openmpi",
-        )
-
-    # Method 4: Cray MPICH PMI env-var fallback. WARNING: multi-node runs
-    # on this path require MASTER_ADDR to be set by the job script (e.g.
-    # `export MASTER_ADDR=$(head -n 1 $PBS_NODEFILE)`) since every rank
-    # would otherwise resolve its own hostname.
-    if "PMI_RANK" in os.environ:
-        world_size = int(os.environ["PMI_SIZE"])
-        world_rank = int(os.environ["PMI_RANK"])
-
-        if "PMI_LOCAL_RANK" in os.environ:
-            local_rank = int(os.environ["PMI_LOCAL_RANK"])
-        elif "PALS_LOCAL_RANKID" in os.environ:
-            local_rank = int(os.environ["PALS_LOCAL_RANKID"])
-        else:
-            gpus_per_node = torch.cuda.device_count() or 1
-            local_rank = world_rank % gpus_per_node
-
-        if "MASTER_ADDR" not in os.environ:
-            os.environ["MASTER_ADDR"] = socket.gethostbyname(socket.gethostname())
-        if "MASTER_PORT" not in os.environ:
-            os.environ["MASTER_PORT"] = "1234"
-        return local_rank, world_size, world_rank, "cray-mpich"
-
-    # Method 5: Single process (no distributed)
-    return 0, 1, 0, "single"
-
-
-def init_distributed(backend="nccl"):
-    """
-    Initialize distributed training environment.
-
-    Args:
-        backend: Communication backend ("nccl" for GPU, "gloo" for CPU)
-
-    Returns:
-        tuple: (local_rank, world_size, world_rank, launcher_name)
-    """
-    local_rank, world_size, world_rank, launcher = detect_rank_info()
-
-    if world_size > 1:
-        torch.cuda.set_device(local_rank)
-        init_process_group(backend=backend, rank=world_rank, world_size=world_size)
-
-    return local_rank, world_size, world_rank, launcher
+from utils.distributed import init_distributed, cleanup_distributed
 
 
 # =============================================================================
@@ -241,7 +135,6 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--num_epochs", type=int, default=10, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=4, help="Training batch size per GPU")
-    parser.add_argument("--backend", type=str, default="nccl", choices=["nccl", "gloo", "mpi"])
     parser.add_argument("--num_samples", type=int, default=1000, help="Number of synthetic samples")
     parser.add_argument("--num_variables", type=int, default=5, help="Number of ERA5 variables")
     parser.add_argument("--num_levels", type=int, default=13, help="Number of pressure levels")
@@ -254,19 +147,16 @@ def main():
     # -----------------------------------------------------------------
     # 1. Initialize distributed (handles all launchers automatically)
     # -----------------------------------------------------------------
-    LOCAL_RANK, WORLD_SIZE, WORLD_RANK, LAUNCHER = init_distributed(backend=argv.backend)
+    WORLD_RANK, WORLD_SIZE, LOCAL_RANK = init_distributed()
     print(
         f"[{socket.gethostname()}] world_rank={WORLD_RANK} "
-        f"local_rank={LOCAL_RANK} launcher={LAUNCHER} "
-        f"visible_gpus={torch.cuda.device_count()} "
-        f"PMI_LOCAL_RANK={os.environ.get('PMI_LOCAL_RANK')} "
-        f"PALS_LOCAL_RANKID={os.environ.get('PALS_LOCAL_RANKID')}",
+        f"local_rank={LOCAL_RANK} "
+        f"visible_gpus={torch.cuda.device_count()}",
         flush=True,
     )
     device = torch.device(f"cuda:{LOCAL_RANK}")
 
     if WORLD_RANK == 0:
-        print(f"Launcher : {LAUNCHER}")
         print(f"World    : {WORLD_SIZE} GPUs")
         print("-" * 75)
 
@@ -423,8 +313,7 @@ def main():
     # -----------------------------------------------------------------
     # 7. Cleanup
     # -----------------------------------------------------------------
-    if WORLD_SIZE > 1:
-        destroy_process_group()
+    cleanup_distributed()
 
 
 if __name__ == "__main__":

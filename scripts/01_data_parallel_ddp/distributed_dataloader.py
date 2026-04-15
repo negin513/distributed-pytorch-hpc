@@ -38,12 +38,13 @@ def detect_rank_info():
 
     Checks environment variables in priority order:
         1. torchrun (LOCAL_RANK, RANK, WORLD_SIZE)
-        2. OpenMPI  (OMPI_COMM_WORLD_*)
-        3. Cray MPICH (PMI_RANK, PMI_SIZE, PMI_LOCAL_RANK)
-        4. mpi4py   (fallback for mpiexec without env vars)
+        2. mpi4py   (preferred for mpiexec; broadcasts rank 0's host so
+                     every rank agrees on MASTER_ADDR — works for both
+                     OpenMPI and Cray MPICH)
+        3. OpenMPI env vars  (fallback if mpi4py is unavailable)
+        4. Cray MPICH PMI env vars (fallback if mpi4py is unavailable —
+                     single-node only, see warning below)
         5. Single process
-
-    Does NOT initialize the process group — use init_distributed() for that.
 
     Returns:
         tuple: (local_rank, world_size, world_rank, launcher_name)
@@ -57,36 +58,8 @@ def detect_rank_info():
             "torchrun",
         )
 
-    # Method 2: OpenMPI mpirun
-    if "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ:
-        os.environ.setdefault("MASTER_ADDR", socket.gethostbyname(socket.gethostname()))
-        os.environ.setdefault("MASTER_PORT", "29500")
-        return (
-            int(os.environ["OMPI_COMM_WORLD_LOCAL_RANK"]),
-            int(os.environ["OMPI_COMM_WORLD_SIZE"]),
-            int(os.environ["OMPI_COMM_WORLD_RANK"]),
-            "openmpi",
-        )
-
-    # Method 3: Cray MPICH (PMI)
-    if "PMI_RANK" in os.environ:
-        world_size = int(os.environ["PMI_SIZE"])
-        world_rank = int(os.environ["PMI_RANK"])
-
-        # Determine local rank
-        if "PMI_LOCAL_RANK" in os.environ:
-            local_rank = int(os.environ["PMI_LOCAL_RANK"])
-        elif "PALS_LOCAL_RANKID" in os.environ:
-            local_rank = int(os.environ["PALS_LOCAL_RANKID"])
-        else:
-            gpus_per_node = torch.cuda.device_count() or 1
-            local_rank = world_rank % gpus_per_node
-
-        os.environ.setdefault("MASTER_ADDR", socket.gethostbyname(socket.gethostname()))
-        os.environ.setdefault("MASTER_PORT", "29500")
-        return local_rank, world_size, world_rank, "cray-mpich"
-
-    # Method 4: mpi4py (fallback for mpiexec without env vars)
+    # Method 2: mpi4py — preferred for any mpiexec launch because it can
+    # broadcast rank 0's hostname so every rank agrees on MASTER_ADDR.
     try:
         from mpi4py import MPI
         comm = MPI.COMM_WORLD
@@ -97,15 +70,51 @@ def detect_rank_info():
             local_rank = shmem_comm.Get_rank()
             world_rank = comm.Get_rank()
 
-            master_addr = comm.bcast(
-                socket.gethostbyname(socket.gethostname()), root=0
-            )
-            os.environ.setdefault("MASTER_ADDR", master_addr)
-            os.environ.setdefault("MASTER_PORT", "29500")
+            if "MASTER_ADDR" not in os.environ:
+                os.environ["MASTER_ADDR"] = comm.bcast(
+                    socket.gethostbyname(socket.gethostname()), root=0
+                )
+            if "MASTER_PORT" not in os.environ:
+                os.environ["MASTER_PORT"] = "1234"
 
             return local_rank, world_size, world_rank, "mpi4py"
     except ImportError:
         pass
+
+    # Method 3: OpenMPI mpirun (env-var fallback, single-node safe)
+    if "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ:
+        if "MASTER_ADDR" not in os.environ:
+            os.environ["MASTER_ADDR"] = socket.gethostbyname(socket.gethostname())
+        if "MASTER_PORT" not in os.environ:
+            os.environ["MASTER_PORT"] = "1234"
+        return (
+            int(os.environ["OMPI_COMM_WORLD_LOCAL_RANK"]),
+            int(os.environ["OMPI_COMM_WORLD_SIZE"]),
+            int(os.environ["OMPI_COMM_WORLD_RANK"]),
+            "openmpi",
+        )
+
+    # Method 4: Cray MPICH PMI env-var fallback. WARNING: multi-node runs
+    # on this path require MASTER_ADDR to be set by the job script (e.g.
+    # `export MASTER_ADDR=$(head -n 1 $PBS_NODEFILE)`) since every rank
+    # would otherwise resolve its own hostname.
+    if "PMI_RANK" in os.environ:
+        world_size = int(os.environ["PMI_SIZE"])
+        world_rank = int(os.environ["PMI_RANK"])
+
+        if "PMI_LOCAL_RANK" in os.environ:
+            local_rank = int(os.environ["PMI_LOCAL_RANK"])
+        elif "PALS_LOCAL_RANKID" in os.environ:
+            local_rank = int(os.environ["PALS_LOCAL_RANKID"])
+        else:
+            gpus_per_node = torch.cuda.device_count() or 1
+            local_rank = world_rank % gpus_per_node
+
+        if "MASTER_ADDR" not in os.environ:
+            os.environ["MASTER_ADDR"] = socket.gethostbyname(socket.gethostname())
+        if "MASTER_PORT" not in os.environ:
+            os.environ["MASTER_PORT"] = "1234"
+        return local_rank, world_size, world_rank, "cray-mpich"
 
     # Method 5: Single process (no distributed)
     return 0, 1, 0, "single"
@@ -115,8 +124,6 @@ def init_distributed(backend="nccl"):
     """
     Initialize distributed training environment.
 
-    Detects the launcher, sets up the device, and initializes the process group.
-
     Args:
         backend: Communication backend ("nccl" for GPU, "gloo" for CPU)
 
@@ -124,15 +131,14 @@ def init_distributed(backend="nccl"):
         tuple: (local_rank, world_size, world_rank, launcher_name)
     """
     local_rank, world_size, world_rank, launcher = detect_rank_info()
-    
-    # Initialize process group if distributed
+
     if world_size > 1:
         torch.cuda.set_device(local_rank)
         init_process_group(backend=backend, rank=world_rank, world_size=world_size)
 
     return local_rank, world_size, world_rank, launcher
 
-
+# =============================================================================
 # Custom Dataset
 class SimpleDataset(Dataset):
     """Example dataset with synthetic data"""

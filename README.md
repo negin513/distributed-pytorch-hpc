@@ -1,8 +1,7 @@
 # Multi-Node PyTorch Distributed Training on NCAR's Derecho
 
 [![Docs](https://img.shields.io/badge/Docs-online-blue)](https://negin513.github.io/distributed-pytorch-hpc/)
-[![Last Updated](https://img.shields.io/badge/Last_Updated-March_2026-blue)](https://github.com/NCAR/distributed-pytorch-hpc)
-
+[![Last Updated](https://img.shields.io/github/last-commit/negin513/distributed-pytorch-hpc?label=Last%20Updated&color=blue)](https://github.com/negin513/distributed-pytorch-hpc)
 ## Overview
 
 This repostory contains a collecion of example workflows for executing multi-node, multi-GPU machine learning training using PyTorch on NSF NCAR's HPC Supercomputers (i.e. Derecho), along with example PBS scripts for running them.
@@ -73,10 +72,10 @@ See [`scripts/07_domain_parallelism/`](scripts/07_domain_parallelism/) for examp
 ### 1. Setup Environment
 
 ```bash
-git clone https://github.com/NCAR/distributed-pytorch-hpc
+git clone https://github.com/negin513/distributed-pytorch-hpc
 cd distributed-pytorch-hpc
 
-module load conda
+module load conda mkl cuda
 
 # create environment from custom torch wheel built for Derecho (with NCCL tuned for Slingshot)
 conda env create -f environment.yml
@@ -87,7 +86,7 @@ conda activate pytorch-derecho
 ``` bash
 # submit examples to train on Derecho using PBS scripts in `scripts/`
 cd scripts/01_data_parallel_ddp
-qsub run_ddp.sh -A <your_account>  # submit DDP job to PBS
+qsub -A <your_account> torchrun_multigpu_ddp.sh  # submit DDP job to PBS
 ```
 
 ## Launching Distributed Jobs

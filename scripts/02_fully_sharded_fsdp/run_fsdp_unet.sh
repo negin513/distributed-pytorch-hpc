@@ -1,16 +1,17 @@
 #!/bin/bash
 ## ═══════════════════════════════════════════════════════════════════════
-## FSDP Training on Derecho
+## FSDP U-Net Training on Derecho
 ##
-## Launches Fully Sharded Data Parallel training with ResNet-18 on CIFAR-10.
+## Launches Fully Sharded Data Parallel training of a simple U-Net on
+## synthetic ERA5-like data (latitude-weighted MSE).
 ## Copy this script and adjust #PBS and the python command for your job.
 ##
 ## Usage:
-##   qsub run_fsdp.sh -A <project_key>
+##   qsub run_fsdp_unet.sh -A <project_key>
 ## ═══════════════════════════════════════════════════════════════════════
 
 #PBS -A SCSG0001
-#PBS -N fsdp_training
+#PBS -N fsdp_unet
 #PBS -l walltime=00:30:00
 #PBS -l select=1:ncpus=64:ngpus=4:mem=480GB
 #PBS -q main
@@ -59,12 +60,11 @@ echo "  GPUs/node:   $GPUS_PER_NODE"
 echo "  Total GPUs:  $TOTAL_PROCS"
 echo "═══════════════════════════════════════════════════"
 
-# ── Run Examples ─────────────────────────────────────────────────────
-echo "--- FSDP ResNet-18 training (float32) ---"
+# ── Run U-Net FSDP Training ──────────────────────────────────────────
+echo "--- FSDP U-Net training (ERA5-like synthetic data) ---"
 mpiexec -n $TOTAL_PROCS --ppn $GPUS_PER_NODE --cpu-bind none \
-    python "${SCRIPT_DIR}/resnet_fsdp_training.py" --epochs 10
-
-echo ""
-echo "--- FSDP ResNet-18 training (BFloat16 mixed precision) ---"
-mpiexec -n $TOTAL_PROCS --ppn $GPUS_PER_NODE --cpu-bind none \
-    python "${SCRIPT_DIR}/resnet_fsdp_training.py" --epochs 10 --use-amp
+    python "${SCRIPT_DIR}/multinode_fsdp_unet.py" \
+        --num_epochs 10 \
+        --batch_size 4 \
+        --num_samples 1000 \
+        --lat 181 --lon 360

@@ -61,19 +61,20 @@ echo "  Total GPUs:  $TOTAL_PROCS"
 echo "═══════════════════════════════════════════════════"
 
 # ── Run Examples ─────────────────────────────────────────────────────
-echo "--- Example 01: Basic tensor parallel ---"
+echo "--- Example 01: DeviceMesh Basics ---"
 mpiexec -n $TOTAL_PROCS --ppn $GPUS_PER_NODE --cpu-bind none \
-    python "${SCRIPT_DIR}/01_basic_tensor_parallel.py"
+    python "${SCRIPT_DIR}/01_device_mesh_basics.py"
 echo ""
 
-echo "--- Example 02: Device mesh ---"
+echo "--- Example 02: Basic Tensor Parallelism (1D mesh) ---"
 mpiexec -n $TOTAL_PROCS --ppn $GPUS_PER_NODE --cpu-bind none \
-    python "${SCRIPT_DIR}/02_device_mesh_example.py"
+    python "${SCRIPT_DIR}/02_basic_tensor_parallel.py"
 echo ""
 
-echo "--- Example 04: Advanced TP (1D mesh) ---"
+echo "--- Example 03: TP ViT Training (ERA5-like data) ---"
 mpiexec -n $TOTAL_PROCS --ppn $GPUS_PER_NODE --cpu-bind none \
-    python "${SCRIPT_DIR}/04_advanced_tp_example.py"
+    python "${SCRIPT_DIR}/tensor_parallel_vit.py" \
+    --num_epochs 3 --num_samples 200
 echo ""
 
 echo "All tensor parallelism examples completed."

@@ -10,6 +10,8 @@ While this code is written to run directly on [Derecho](https://ncar-hpc-docs.re
 
 The goal is to provide a starting point for researchers who want to scale their PyTorch training workflow to multiple GPUs and nodes on NCAR's HPC systems using different distributed training paradigms. 
 
+The early version of this repository was used to build multi-node scripts for [MILES-CREDIT](https://github.com/NCAR/miles-credit.git). 
+
 ## Contents
 
 

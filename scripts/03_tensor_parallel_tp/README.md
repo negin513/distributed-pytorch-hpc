@@ -32,50 +32,55 @@ In practice, sequential linear layers (e.g., in an MLP block) use both methods t
 
 ## Files in this Directory
 
-### `01_basic_tensor_parallel.py`
-Introduction to tensor parallelism basics.
+### `01_device_mesh_basics.py`
+Introduction to PyTorch's `DeviceMesh` — the foundation for all parallelism strategies.
 
-**Key concepts:**
-- Simple tensor splitting across GPUs
-- Basic collective operations
-- Understanding tensor distribution
+**What it covers:**
+- Creating 1D meshes (flat GPU group)
+- Creating 2D meshes (TP x DP layout)
+- Slicing sub-meshes for passing to `parallelize_module()` or FSDP
+- How mesh dimension ordering maps GPUs to nodes
 
-### `02_device_mesh_example.py`
-Using PyTorch's DeviceMesh for organizing GPUs.
+### `02_basic_tensor_parallel.py`
+Megatron-style tensor parallelism on a toy MLP using a 1D mesh.
 
-**Key concepts:**
-- Creating multi-dimensional device meshes
-- Organizing GPUs for different parallelism strategies
-- Foundation for hybrid parallelism
+**What it covers:**
+- `ColwiseParallel` — split weight columns, all-gather output
+- `RowwiseParallel` — split weight rows, all-reduce output
+- Pairing them to minimize communication (one all-reduce per block)
+- Full training loop: forward, backward, optimizer step
 
-### `03_2d_tensor_parallel.py`
-2D tensor parallelism (2D-TP) for large models.
+### `tensor_parallel_vit.py`
+Full training example: a Vision Transformer (ViT) on synthetic ERA5-like weather data with tensor parallelism on a 2D mesh.
 
-**Key concepts:**
-- Combining row and column parallelism
-- Reducing communication overhead
-- Scaling to larger GPU counts
-
-### `04_advanced_tp_example.py`
-Advanced tensor parallelism patterns.
-
-**Key concepts:**
-- Sharding strategies for different layer types
-- Custom parallelization patterns
-- Integration with transformer architectures
+**What it covers:**
+- Realistic model architecture (ViT with patch embedding, multi-head attention, MLP blocks)
+- Megatron-LM style TP: Q/K/V projections (ColwiseParallel) + output projection (RowwiseParallel)
+- ERA5-like dataset with latitude-weighted MSE loss (same as DDP and FSDP examples)
+- Full training loop with throughput measurement
+- 2D DeviceMesh: TP within nodes, DP across nodes
+- Why TP is natural for Transformers (linear layers dominate, Conv2d models like UNet/ResNet are not TP-friendly)
 
 ## Running the Examples
 
-### Basic Example
+### Submit all examples as a PBS job
 ```bash
-mpiexec -n 4 --ppn 4 --cpu-bind none python 01_basic_tensor_parallel.py
-torchrun --standalone --nproc_per_node=4 01_basic_tensor_parallel.py
+qsub run_tensor_parallel.sh
 ```
 
-### 2D Tensor Parallelism (8 GPUs)
+### Run individually (single node, 4 GPUs)
 ```bash
-mpiexec -n 8 --ppn 4 --cpu-bind none python 03_2d_tensor_parallel.py
-torchrun --nproc_per_node=4 03_2d_tensor_parallel.py   # single node
+# DeviceMesh basics
+torchrun --standalone --nproc_per_node=4 01_device_mesh_basics.py
+mpiexec -n 4 --ppn 4 --cpu-bind none python 01_device_mesh_basics.py
+
+# Basic TP (1D mesh)
+torchrun --standalone --nproc_per_node=4 02_basic_tensor_parallel.py
+mpiexec -n 4 --ppn 4 --cpu-bind none python 02_basic_tensor_parallel.py
+
+# TP ViT training (2D mesh, realistic model)
+mpiexec -n 4 --ppn 4 --cpu-bind none python tensor_parallel_vit.py
+mpiexec -n 8 --ppn 4 --cpu-bind none python tensor_parallel_vit.py  # 2 nodes
 ```
 
 ## Key Concepts
@@ -109,38 +114,38 @@ from torch.distributed.device_mesh import init_device_mesh
 # 1D mesh for simple TP
 mesh_1d = init_device_mesh("cuda", (4,))
 
-# 2D mesh for TP + DP
-mesh_2d = init_device_mesh("cuda", (2, 4))  # 2 TP groups of 4 GPUs each
+# 2D mesh for TP + DP (last dim is fastest-varying = same node)
+mesh_2d = init_device_mesh("cuda", (2, 4), mesh_dim_names=("dp", "tp"))
 ```
 
 ### Communication Patterns
 
 TP requires specific communication patterns:
 
-- **All-Gather**: Collect tensor shards from all GPUs
-- **Reduce-Scatter**: Reduce and distribute results
-- **All-Reduce**: Sum gradients across all GPUs
+- **All-Gather**: Collect tensor shards from all GPUs (after ColwiseParallel)
+- **All-Reduce**: Sum partial results across GPUs (after RowwiseParallel)
+- **Reduce-Scatter**: Reduce and distribute results (used in some advanced layouts)
 
 ## Performance Tips
 
-1. **Minimize communication** - group operations when possible
-2. **Use NCCL** - optimized for GPU-to-GPU communication
-3. **Balance sharding** - ensure equal work distribution
-4. **Overlap communication and computation** - hide communication latency
-5. **Consider 2D TP** - reduces communication for large models
+1. **Keep TP within a node** — TP requires high-bandwidth all-reduce; use NVLink, not network
+2. **Use DP across nodes** — gradient all-reduce is more tolerant of network latency
+3. **Ensure dimensions are divisible** — hidden_dim must be divisible by TP degree
+4. **Pair ColwiseParallel + RowwiseParallel** — eliminates one communication step per block
+5. **Profile with `NCCL_DEBUG=INFO`** — verify NCCL is using the expected transport
 
 ## When to Use Tensor Parallelism
 
-✅ **Good for:**
+**Good for:**
 - Very large layers that don't fit on a single GPU
 - Transformer models with large hidden dimensions
 - Models with large embedding tables
-- When combined with other parallelism strategies (hybrid)
+- Combined with DP or FSDP for production training
 
-❌ **Not ideal for:**
-- Small models where communication overhead is high
-- When GPUs are connected via slow interconnect
-- As the only parallelism strategy for medium-sized models
+**Not ideal for:**
+- Small models (communication overhead dominates)
+- GPUs connected via slow interconnect (TP needs high bandwidth)
+- As the only strategy for medium-sized models (FSDP is usually better)
 
 ## Comparison with Other Strategies
 
@@ -150,49 +155,29 @@ TP requires specific communication patterns:
 | FSDP | Sharded | Parameters + gradients | High |
 | TP | Distributed | Activations + gradients | Medium-High |
 
-## 1D vs 2D Tensor Parallelism
-
-### 1D TP
-- Simpler implementation
-- Higher communication volume
-- Good for 2-8 GPUs
-
-### 2D TP
-- More complex setup
-- Reduced communication (√N instead of N)
-- Better for 8+ GPUs
-- Requires 2D device mesh
-
 ## Common Issues
 
 ### High Communication Overhead
 - Ensure GPUs are connected via NVLink or high-speed interconnect
-- Consider reducing TP degree
-- Use 2D TP to reduce communication
-- Overlap communication with computation
+- Reduce TP degree (e.g., tp=2 instead of tp=4)
+- Keep TP within a single node
 
 ### Incorrect Tensor Shapes
-- Ensure layer dimensions are divisible by TP degree
-- Adjust model architecture for TP compatibility
-- Use padding if necessary
-
-### Load Imbalance
-- Ensure uniform distribution of work
-- Profile to identify bottlenecks
-- Consider hybrid parallelism strategies
+- Layer dimensions must be divisible by TP degree
+- Check: `hidden_dim % tp == 0`
+- Adjust model architecture or TP degree accordingly
 
 ## Combining with Other Strategies
 
 TP is often combined with:
 
-- **TP + DP**: Tensor parallel within nodes, data parallel across nodes
+- **TP + DP**: Tensor parallel within nodes, data parallel across nodes (example 03)
 - **TP + FSDP**: TP for large layers, FSDP for memory efficiency
 - **TP + PP**: TP within stages, pipeline across stages
 
-See `examples/06_hybrid_parallelism/` for examples.
+See `scripts/06_hybrid_parallelism/` for hybrid examples.
 
 ## References
 
 - [Megatron-LM Paper](https://arxiv.org/abs/1909.08053)
 - [PyTorch Tensor Parallel](https://pytorch.org/docs/stable/distributed.tensor.parallel.html)
-- [2D Tensor Parallelism](https://arxiv.org/abs/2104.04473)

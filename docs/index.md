@@ -37,5 +37,5 @@ Once you have verified your environment, you can run your first distributed job 
 
 ```bash
 cd scripts/01_data_parallel_ddp
-qsub torchrun_multigpu_ddp.sh -A <your_account>
+qsub -A <your_account> torchrun_multigpu_ddp.sh
 ```

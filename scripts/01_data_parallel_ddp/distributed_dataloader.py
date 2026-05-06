@@ -179,6 +179,12 @@ def main():
     parser.add_argument("--backend", type=str, default="nccl", choices=["nccl", "gloo", "mpi"])
     parser.add_argument("--dataset_size", type=int, default=1000, help="Size of the dataset")
     parser.add_argument("--input_dim", type=int, default=10, help="Input dimension")
+    parser.add_argument("--num_workers", type=int, default=4,
+                        help="DataLoader worker processes (each loads one full batch)")
+    parser.add_argument("--prefetch_factor", type=int, default=2,
+                        help="Batches each worker pre-loads ahead of time")
+    parser.add_argument("--no_persistent_workers", action="store_true",
+                        help="Tear down workers between epochs (default: keep alive)")
 
     argv = parser.parse_args()
 
@@ -205,13 +211,54 @@ def main():
     # This restricts data loading to a subset of the dataset exclusive to the current process
     train_sampler = DistributedSampler(dataset=dataset)
 
-    # Create DataLoader with DistributedSampler - same pattern as scripts/main.py lines 279-284
+    # Create DataLoader with DistributedSampler
     # Important: Do NOT use shuffle=True when using DistributedSampler
+    #
+    # ── DataLoader worker/prefetch primer ──────────────────────────────────
+    #
+    # num_workers (int):
+    #   Number of subprocesses that load data in parallel.
+    #   Each worker loads ONE COMPLETE BATCH independently — there is NO
+    #   intra-batch parallelism (a single batch is never split across
+    #   workers).  This means parallelism exists even with batch_size=1.
+    #
+    #   Example with num_workers=3, batch_size=B:
+    #
+    #     Worker 0  ──▶  [batch 0]  ──▶  [batch 3]  ──▶ ...
+    #     Worker 1  ──▶  [batch 1]  ──▶  [batch 4]  ──▶ ...
+    #     Worker 2  ──▶  [batch 2]  ──▶  [batch 5]  ──▶ ...
+    #                        │               │
+    #                        ▼               ▼
+    #              ┌──────────────────────────────────┐
+    #              │       ready-batch queue           │
+    #              │  (main process consumes from here)│
+    #              └──────────────────────────────────┘
+    #
+    # prefetch_factor (int, default=2):
+    #   How many batches EACH worker pre-loads ahead of time.
+    #   Total batches resident in memory = num_workers × prefetch_factor.
+    #   Prefetching smooths out *variance* in per-batch loading time —
+    #   it does NOT add parallelism.  With uniform load times and a few
+    #   workers, prefetching gives little benefit.  High variance (common
+    #   on HPC shared filesystems or cloud streaming) is where larger
+    #   prefetch_factor pays off.
+    #
+    # persistent_workers (bool, default=False):
+    #   When True, worker processes stay alive across epochs instead of
+    #   being torn down and respawned.  This avoids paying the worker
+    #   startup cost (process fork + dataset init) every epoch — usually
+    #   a free win for multi-epoch training, especially with
+    #   IterableDataset.
+    # ───────────────────────────────────────────────────────────────────────
+    persistent = not argv.no_persistent_workers and argv.num_workers > 0
     train_loader = DataLoader(
         dataset=dataset,
         batch_size=batch_size,
         sampler=train_sampler,
-        num_workers=4,
+        num_workers=argv.num_workers,
+        prefetch_factor=argv.prefetch_factor if argv.num_workers > 0 else None,
+        persistent_workers=persistent,
+        pin_memory=True,             # speeds up host→GPU transfer
     )
 
     if WORLD_RANK == 0:
@@ -219,6 +266,13 @@ def main():
         print(f"Samples per GPU      : ~{len(dataset) // WORLD_SIZE}")
         print(f"Batches per GPU      : {len(train_loader)}")
         print(f"Effective batch size : {batch_size * WORLD_SIZE}")
+        print(f"DataLoader workers   : {train_loader.num_workers}")
+        if train_loader.num_workers > 0:
+            print(f"Prefetch factor      : {train_loader.prefetch_factor}")
+            print(f"Batches in queue     : {train_loader.num_workers * train_loader.prefetch_factor}"
+                  f"  (num_workers × prefetch_factor)")
+            print(f"Persistent workers   : {train_loader.persistent_workers}")
+        print(f"Pin memory           : {train_loader.pin_memory}")
         print("-" * 50)
 
     # -------------------------------------------

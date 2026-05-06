@@ -138,6 +138,7 @@ class Trainer:
         self.train_data = train_data
         self.optimizer = optimizer
         self.save_every = save_every
+        self.batch_size = train_data.batch_size
         self.epochs_run = 0
         self.snapshot_path = snapshot_path
         self.epoch_times = []  # List to store the time for each epoch
@@ -162,9 +163,8 @@ class Trainer:
         self.optimizer.step()
 
     def _run_epoch(self, epoch):
-        b_sz = len(next(iter(self.train_data))[0])
         print(
-            f"[GPU{self.global_rank}] Epoch {epoch} | Batchsize: {b_sz} | Steps: {len(self.train_data)}"
+            f"[GPU{self.global_rank}] Epoch {epoch} | Batchsize: {self.batch_size} | Steps: {len(self.train_data)}"
         )
         self.train_data.sampler.set_epoch(epoch)
 

@@ -193,3 +193,6 @@ profiler_output/
 
 # Snapshots from training
 snapshot.pt
+# pixi environments
+.pixi/*
+!.pixi/config.toml
